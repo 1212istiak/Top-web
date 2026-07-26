@@ -43,7 +43,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api", router);
 
 // Serve the built frontend (React) as static files
-const frontendPath = path.join(__dirname, "../../tvr-dubbers/dist");
+const frontendPath = path.join(__dirname, "../../tvr-dubbers/dist/public");
 app.use(express.static(frontendPath));
 
 // For any non-API route, serve index.html (SPA client-side routing)
