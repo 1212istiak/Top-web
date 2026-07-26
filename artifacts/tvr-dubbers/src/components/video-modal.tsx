@@ -17,17 +17,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
-
-// Parse embed URLs for iframes
-function getEmbedUrl(url: string | null | undefined): string | null {
-  if (!url) return null;
-  if (url.includes('dailymotion.com/video/')) {
-    const videoId = url.split('video/')[1]?.split('?')[0];
-    return videoId ? `https://www.dailymotion.com/embed/video/${videoId}` : url;
-  }
-  // If it's already an embed URL or rumble embed, return as is
-  return url;
-}
+import { SmartPlayer } from "@/components/smart-player";
 
 export function VideoModal({ 
   episodeId, 
@@ -120,8 +110,9 @@ export function VideoModal({
     });
   };
 
-  const primaryUrl = getEmbedUrl(episode?.primaryServerUrl);
-  const backupUrl = getEmbedUrl(episode?.backupServerUrl);
+  const primaryUrl = episode?.primaryServerUrl || null;
+  const backupUrl = episode?.backupServerUrl || null;
+  const activeUrl = server === "primary" && primaryUrl ? primaryUrl : (backupUrl || primaryUrl);
 
   return (
     <Dialog open={!!episodeId} onOpenChange={(open) => !open && onClose()}>
@@ -161,12 +152,7 @@ export function VideoModal({
                   Video not available
                 </div>
               ) : (
-                <iframe
-                  src={server === "primary" && primaryUrl ? primaryUrl : (backupUrl || primaryUrl || "")}
-                  className="w-full h-full border-0"
-                  allowFullScreen
-                  allow="autoplay; fullscreen; picture-in-picture"
-                />
+                <SmartPlayer value={activeUrl} className="w-full h-full border-0" />
               )}
             </div>
 

@@ -7,6 +7,7 @@ import {
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { VideoModal } from "@/components/video-modal";
+import { TrailerModal } from "@/components/trailer-modal";
 import { Button } from "@/components/ui/button";
 import { Play, Calendar, FolderOpen, X } from "lucide-react";
 import { format, differenceInSeconds } from "date-fns";
@@ -57,6 +58,7 @@ export function Home() {
 
   const [activeEpisodeId, setActiveEpisodeId] = useState<number | null>(null);
   const [showSpecialModal, setShowSpecialModal] = useState(false);
+  const [showTrailerModal, setShowTrailerModal] = useState(false);
   const [selectedGenre, setSelectedGenre] = useState<string>("All");
 
   const regularEpisodes = allEpisodes?.filter(ep => !ep.isSpecial) || [];
@@ -146,13 +148,8 @@ export function Home() {
               size="lg" 
               variant="outline"
               className="text-lg h-14 px-8 rounded-full font-bold border-white/20 hover:bg-white/10 glass-card transition-all hover:scale-105"
-              onClick={() => {
-                // If trailer exists, open it in modal using a mock episode ID or custom handling.
-                // For simplicity, we just alert if not implemented, or use the trailer's primary URL
-                if (trailer?.primaryServerUrl) {
-                  window.open(trailer.primaryServerUrl, "_blank");
-                }
-              }}
+              onClick={() => setShowTrailerModal(true)}
+              disabled={!trailer?.primaryServerUrl && !trailer?.backupServerUrl}
             >
               <Calendar className="mr-2 h-5 w-5" /> Upcoming Episode
             </Button>
@@ -365,6 +362,15 @@ export function Home() {
         episodeId={activeEpisodeId} 
         onClose={() => setActiveEpisodeId(null)} 
         onNextEpisode={handleNextEpisode}
+      />
+
+      <TrailerModal
+        open={showTrailerModal}
+        onClose={() => setShowTrailerModal(false)}
+        title={trailer?.title}
+        genre={trailer?.genre}
+        primaryServerUrl={trailer?.primaryServerUrl}
+        backupServerUrl={trailer?.backupServerUrl}
       />
 
       {/* FULLSCREEN SPECIAL FOLDER MODAL */}

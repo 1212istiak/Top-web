@@ -156,12 +156,6 @@ export function Navbar() {
               <span className="text-xs font-medium text-white hidden sm:inline-block">Dark</span>
             </div>
 
-            {isAuthenticated && (
-              <Button variant="outline" size="sm" onClick={() => setLocation("/admin")} className="hidden sm:flex border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 hover:text-cyan-300">
-                Admin
-              </Button>
-            )}
-
           </div>
         </div>
       </nav>
