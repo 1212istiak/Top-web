@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: top-web
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: pnpm install && pnpm --filter @workspace/api-server build
+    startCommand: node artifacts/api-server/dist/index.mjs
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"
+      - key: NPM_CONFIG_PRODUCTION
+        value: "false"
