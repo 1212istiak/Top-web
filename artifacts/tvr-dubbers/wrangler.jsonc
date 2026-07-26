@@ -1,0 +1,9 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tvr-dubbers",
+  "compatibility_date": "2026-07-27",
+  "assets": {
+    "directory": "./dist/public",
+    "not_found_handling": "single-page-application"
+  }
+}
