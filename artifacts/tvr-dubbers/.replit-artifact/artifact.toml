@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "TVR Dubbers"
+version = "1.0.0"
+id = "artifacts/tvr-dubbers"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25904
+
+[services.development]
+run = "pnpm --filter @workspace/tvr-dubbers run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/tvr-dubbers", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/tvr-dubbers/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25904"
+BASE_PATH = "/"
