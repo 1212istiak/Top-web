@@ -47,7 +47,8 @@ const frontendPath = path.join(__dirname, "../../tvr-dubbers/dist");
 app.use(express.static(frontendPath));
 
 // For any non-API route, serve index.html (SPA client-side routing)
-app.get("*", (_req, res) => {
+// Express 5 / path-to-regexp v8 requires named wildcards: /{*path}
+app.get("/{*path}", (_req, res) => {
   res.sendFile(path.join(frontendPath, "index.html"));
 });
 
