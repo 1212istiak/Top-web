@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     region: oregon
-    buildCommand: pnpm install && pnpm --filter @workspace/api-server build
+    buildCommand: pnpm install && pnpm --filter @workspace/api-server build && pnpm --filter @workspace/tvr-dubbers build
     startCommand: node artifacts/api-server/dist/index.mjs
     envVars:
       - key: NODE_ENV
@@ -13,3 +13,5 @@ services:
         value: "10000"
       - key: NPM_CONFIG_PRODUCTION
         value: "false"
+      - key: BASE_PATH
+        value: /
