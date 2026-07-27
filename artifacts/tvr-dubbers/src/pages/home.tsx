@@ -172,7 +172,7 @@ export function Home() {
                   { label: "Secs", value: countdown.s }
                 ].map((item, i) => (
                   <div key={i} className="flex flex-col items-center">
-                    <span className="text-4xl md:text-6xl font-display font-bold text-white tabular-nums tracking-tighter">
+                    <span className="text-4xl md:text-6xl font-display font-bold text-foreground tabular-nums tracking-tighter">
                       {item.value.toString().padStart(2, '0')}
                     </span>
                     <span className="text-xs md:text-sm text-cyan-400 mt-2 uppercase tracking-widest font-medium">
@@ -182,7 +182,7 @@ export function Home() {
                 ))}
               </div>
             ) : (
-              <div className="text-3xl font-display font-bold text-white uppercase tracking-wider color-cycle-text py-4">
+              <div className="text-3xl font-display font-bold text-foreground uppercase tracking-wider color-cycle-text py-4">
                 Coming Soon
               </div>
             )}
@@ -194,7 +194,7 @@ export function Home() {
           <section className="mb-24 animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-300 fill-mode-both">
             <div className="flex items-end justify-between mb-8">
               <div>
-                <h3 className="text-2xl md:text-3xl font-display font-bold text-white flex items-center gap-3">
+                <h3 className="text-2xl md:text-3xl font-display font-bold text-foreground flex items-center gap-3">
                   <FolderOpen className="text-cyan-400 h-8 w-8" />
                   {settings?.specialFolderLabel || "Special Collection"}
                 </h3>
@@ -258,7 +258,7 @@ export function Home() {
         {/* ALL EPISODES GRID */}
         <section id="episodes" className="animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-500 fill-mode-both">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
-            <h3 className="text-2xl md:text-3xl font-display font-bold text-white border-l-4 border-cyan-500 pl-4">
+            <h3 className="text-2xl md:text-3xl font-display font-bold text-foreground border-l-4 border-cyan-500 pl-4">
               All Episodes
             </h3>
             
@@ -270,7 +270,7 @@ export function Home() {
                   className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
                     selectedGenre === g 
                       ? "bg-cyan-600 text-white shadow-[0_0_10px_rgba(8,145,178,0.5)]" 
-                      : "bg-white/5 text-muted-foreground hover:bg-white/10 hover:text-white"
+                      : "bg-white/5 text-muted-foreground hover:bg-white/10 hover:text-foreground"
                   }`}
                 >
                   {g}
@@ -338,7 +338,7 @@ export function Home() {
                           </span>
                         )}
                       </div>
-                      <h4 className="font-semibold text-white text-lg leading-tight line-clamp-2 group-hover:text-cyan-300 transition-colors">
+                      <h4 className="font-semibold text-foreground text-lg leading-tight line-clamp-2 group-hover:text-cyan-300 transition-colors">
                         {ep.title}
                       </h4>
                       

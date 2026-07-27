@@ -130,7 +130,7 @@ export function Navbar() {
                             {ep.thumbnailUrl && <img src={ep.thumbnailUrl} alt="" className="w-full h-full object-cover" />}
                           </div>
                           <div className="flex-1 truncate">
-                            <p className="text-sm font-medium truncate text-white">{ep.title}</p>
+                            <p className="text-sm font-medium truncate text-foreground">{ep.title}</p>
                             <p className="text-xs text-muted-foreground">EP {ep.episodeNumber}</p>
                           </div>
                         </div>
@@ -153,7 +153,7 @@ export function Navbar() {
                 onCheckedChange={toggleTheme}
                 className="data-[state=checked]:bg-cyan-600"
               />
-              <span className="text-xs font-medium text-white hidden sm:inline-block">Dark</span>
+              <span className="text-xs font-medium text-foreground hidden sm:inline-block">Dark</span>
             </div>
 
           </div>
@@ -162,7 +162,7 @@ export function Navbar() {
 
       <Dialog open={showLoginModal} onOpenChange={setShowLoginModal}>
         <DialogContent className="sm:max-w-md bg-black/80 backdrop-blur-xl border-white/10">
-          <DialogTitle className="text-2xl font-display text-center flex flex-col items-center gap-4">
+          <DialogTitle className="text-2xl font-display text-center flex flex-col items-center gap-4 text-white">
             <div className="w-12 h-12 bg-cyan-950/50 rounded-full flex items-center justify-center border border-cyan-500/30">
               <Lock className="w-6 h-6 text-cyan-400" />
             </div>

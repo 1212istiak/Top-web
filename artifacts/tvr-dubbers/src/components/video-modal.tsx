@@ -125,7 +125,7 @@ export function VideoModal({
         </DialogDescription>
         
         {/* Header */}
-        <div className="p-4 border-b border-border flex justify-between items-center bg-black/40">
+        <div className="p-4 border-b border-border flex justify-between items-center bg-black/90">
           <div>
             <h2 className="text-xl font-display font-bold text-white flex items-center gap-3">
               <span className="bg-primary/20 text-primary px-2 py-0.5 rounded text-sm">
@@ -229,13 +229,13 @@ export function VideoModal({
                         {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
                       </span>
                     </div>
-                    <p className="text-white/80 leading-relaxed whitespace-pre-wrap break-words">{comment.body}</p>
+                    <p className="text-foreground/80 leading-relaxed whitespace-pre-wrap break-words">{comment.body}</p>
                   </div>
                 ))
               )}
             </div>
 
-            <div className="p-4 border-t border-border/50 bg-black/40 shrink-0">
+            <div className="p-4 border-t border-border/50 bg-black/90 shrink-0">
               <form onSubmit={handleCommentSubmit} className="space-y-3">
                 <Input 
                   placeholder="Nickname (optional)" 

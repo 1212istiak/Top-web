@@ -33,7 +33,7 @@ export function TrailerModal({
         <DialogTitle className="sr-only">{title || "Trailer"}</DialogTitle>
         <DialogDescription className="sr-only">Watch the trailer</DialogDescription>
 
-        <div className="p-4 border-b border-border flex justify-between items-center bg-black/40">
+        <div className="p-4 border-b border-border flex justify-between items-center bg-black/90">
           <div>
             <h2 className="text-xl font-display font-bold text-white">{title || "Trailer"}</h2>
             {genre && <p className="text-muted-foreground text-sm mt-1">{genre}</p>}

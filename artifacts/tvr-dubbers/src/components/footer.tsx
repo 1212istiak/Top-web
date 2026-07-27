@@ -16,21 +16,21 @@ export function Footer() {
   };
 
   return (
-    <footer className="w-full border-t border-white/5 bg-black/40 backdrop-blur-md mt-20 pt-16 pb-8">
+    <footer className="w-full border-t border-border bg-card/60 backdrop-blur-md mt-20 pt-16 pb-8">
       <div className="container mx-auto px-4">
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-16">
           
           {/* Column 1: Brand */}
           <div className="space-y-4">
-            <h2 className="text-2xl font-display font-bold text-white uppercase tracking-wider">
+            <h2 className="text-2xl font-display font-bold text-foreground uppercase tracking-wider">
               {settings?.websiteTitle || "TVR Dubbers"}
             </h2>
             <p className="text-muted-foreground text-sm leading-relaxed max-w-sm">
               {settings?.motto || "We Believe in Quality"}<br/><br/>
               A passion-driven streaming hub dedicated to bringing the best Chinese animation (Donghua) to the Bengali-speaking audience.
             </p>
-            <div className="inline-block mt-4 px-4 py-2 bg-white/5 rounded-lg border border-white/10">
+            <div className="inline-block mt-4 px-4 py-2 bg-foreground/5 rounded-lg border border-border">
               <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Team Leader</p>
               <p className="font-semibold text-cyan-400">Rocky</p>
             </div>
@@ -38,10 +38,10 @@ export function Footer() {
 
           {/* Column 2: Voice Artists */}
           <div className="space-y-4">
-            <h3 className="text-sm font-display font-bold text-white uppercase tracking-widest border-b border-white/10 pb-2 inline-block">
+            <h3 className="text-sm font-display font-bold text-foreground uppercase tracking-widest border-b border-border pb-2 inline-block">
               Voice Artists
             </h3>
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+            <div className="bg-foreground/5 border border-border rounded-xl p-4">
               {voiceArtists && voiceArtists.length > 0 ? (
                 <ul className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
                   {voiceArtists.map((artist) => (
@@ -59,7 +59,7 @@ export function Footer() {
 
           {/* Column 3: Socials */}
           <div className="space-y-4">
-            <h3 className="text-sm font-display font-bold text-white uppercase tracking-widest border-b border-white/10 pb-2 inline-block">
+            <h3 className="text-sm font-display font-bold text-foreground uppercase tracking-widest border-b border-border pb-2 inline-block">
               Connect With Us
             </h3>
             <div className="flex flex-wrap gap-3">
@@ -91,7 +91,7 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="border-t border-white/10 pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
+        <div className="border-t border-border pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
           <p>For the Fans, by The Fans.</p>
           <p>All Rights Reserved © {new Date().getFullYear()} {settings?.websiteTitle || "TVR Dubbers"}</p>
         </div>
@@ -105,7 +105,7 @@ function SocialLink({ href, icon, label, onClick }: { href?: string | null, icon
     <a
       href={href || "#"}
       onClick={(e) => onClick(e, href)}
-      className="w-10 h-10 rounded-full bg-white/5 hover:bg-cyan-900/40 border border-white/10 hover:border-cyan-500/50 flex items-center justify-center text-lg text-white/80 hover:text-cyan-400 transition-all hover:scale-110"
+      className="w-10 h-10 rounded-full bg-foreground/5 hover:bg-cyan-900/40 border border-border hover:border-cyan-500/50 flex items-center justify-center text-lg text-foreground/70 hover:text-cyan-400 transition-all hover:scale-110"
       title={label}
       aria-label={label}
     >
