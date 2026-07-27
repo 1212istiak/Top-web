@@ -130,7 +130,7 @@ export function Home() {
             Now Streaming — in Bangla Dub
           </div>
           
-          <h2 className="text-5xl md:text-7xl lg:text-8xl font-display font-black color-cycle-text uppercase tracking-tighter leading-tight max-w-5xl">
+          <h2 className="text-5xl md:text-7xl lg:text-8xl font-display font-black color-cycle-text uppercase tracking-tighter leading-tight max-w-5xl" style={{ fontFamily: "'Cinzel Decorative', serif" }}>
             Battle Through the Heavens
           </h2>
           

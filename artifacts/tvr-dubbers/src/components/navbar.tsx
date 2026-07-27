@@ -90,7 +90,7 @@ export function Navbar() {
             className="flex flex-col cursor-pointer select-none group" 
             onClick={handleTitleClick}
           >
-            <h1 className="text-2xl md:text-3xl font-display font-bold color-cycle-text uppercase tracking-wider group-hover:scale-[1.02] transition-transform">
+            <h1 className="text-2xl md:text-3xl font-display font-bold color-cycle-text uppercase tracking-wider group-hover:scale-[1.02] transition-transform" style={{ fontFamily: "'Cinzel Decorative', serif" }}>
               {settings?.websiteTitle || "TVR Dubbers"}
             </h1>
             <p className="text-xs md:text-sm text-muted-foreground uppercase tracking-widest mt-0.5 opacity-80 font-semibold">
