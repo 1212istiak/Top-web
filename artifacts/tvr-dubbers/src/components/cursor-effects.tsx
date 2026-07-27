@@ -36,24 +36,7 @@ export function CursorEffects() {
         ringPos.current.y += (mousePos.current.y - ringPos.current.y) * 0.15;
         
         if (ringRef.current) {
-          // If the ring is close to the mouse, orbit it slightly
-          const dx = mousePos.current.x - ringPos.current.x;
-          const dy = mousePos.current.y - ringPos.current.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          
-          let scale = 1;
-          let orbitX = 0;
-          let orbitY = 0;
-          
-          if (dist < 2) {
-            // Very close, do a little orbit
-            const time = performance.now() * 0.002;
-            orbitX = Math.cos(time) * 4;
-            orbitY = Math.sin(time) * 4;
-            scale = 1.2;
-          }
-          
-          ringRef.current.style.transform = `translate(${ringPos.current.x + orbitX}px, ${ringPos.current.y + orbitY}px) translate(-50%, -50%) scale(${scale})`;
+          ringRef.current.style.transform = `translate(${ringPos.current.x}px, ${ringPos.current.y}px) translate(-50%, -50%)`;
         }
         
         requestRef.current = requestAnimationFrame(animate);

@@ -164,3 +164,11 @@
     @apply bg-white/80 dark:bg-card backdrop-blur-md border border-black/5 dark:border-card-border shadow-lg dark:shadow-[0_0_15px_rgba(255,255,255,0.05)];
   }
 }
+
+/* Custom cursor: hide the native pointer on real desktop mice so only the
+   dot + ring from CursorEffects is visible. Left untouched on touch devices. */
+@media (hover: hover) and (pointer: fine) {
+  *, *::before, *::after {
+    cursor: none !important;
+  }
+}
