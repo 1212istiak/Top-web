@@ -21,6 +21,7 @@ export function Navbar() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [password, setPassword] = useState("");
 
@@ -101,6 +102,15 @@ export function Navbar() {
           {/* Right Actions */}
           <div className="flex items-center gap-4 md:gap-6">
             
+            {/* Mobile Search Icon */}
+            <button
+              onClick={() => setShowMobileSearch(v => !v)}
+              className="md:hidden w-9 h-9 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-foreground transition-colors"
+              aria-label="Search"
+            >
+              <Search className="h-4 w-4" />
+            </button>
+
             {/* Search Bar */}
             <div className="relative hidden md:block w-64 group">
               <div className="relative">
@@ -158,6 +168,52 @@ export function Navbar() {
 
           </div>
         </div>
+
+        {/* Mobile Search Expandable Row */}
+        {showMobileSearch && (
+          <div className="md:hidden border-t border-white/5 px-4 py-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input 
+                type="text" 
+                placeholder="Search donghua..." 
+                autoFocus
+                className="pl-9 bg-white/5 border-white/10 focus-visible:border-cyan-500/50 rounded-full"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => setIsSearchFocused(true)}
+                onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
+              />
+            </div>
+
+            {isSearchFocused && searchQuery.length > 0 && (
+              <div className="mt-2 bg-card border border-card-border rounded-xl shadow-2xl overflow-hidden glass-card">
+                {searchResults && searchResults.length > 0 ? (
+                  <div className="flex flex-col">
+                    {searchResults.map(ep => (
+                      <div 
+                        key={ep.id} 
+                        className="flex items-center gap-3 p-3 hover:bg-white/5 cursor-pointer transition-colors"
+                      >
+                        <div className="w-12 h-8 bg-black/40 rounded overflow-hidden flex-shrink-0">
+                          {ep.thumbnailUrl && <img src={ep.thumbnailUrl} alt="" className="w-full h-full object-cover" />}
+                        </div>
+                        <div className="flex-1 truncate">
+                          <p className="text-sm font-medium truncate text-foreground">{ep.title}</p>
+                          <p className="text-xs text-muted-foreground">EP {ep.episodeNumber}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-4 text-sm text-center text-muted-foreground">
+                    Coming Soon
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </nav>
 
       <Dialog open={showLoginModal} onOpenChange={setShowLoginModal}>
