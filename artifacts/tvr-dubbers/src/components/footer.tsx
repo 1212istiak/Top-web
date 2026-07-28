@@ -3,6 +3,23 @@ import { FaFacebook, FaYoutube, FaTelegram, FaWhatsapp, FaInstagram, FaPlay, FaV
 import { SiRumble, SiDailymotion } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
 
+// Accepts either a full WhatsApp link or a bare phone number typed into the
+// admin panel (e.g. "01950241724") and always returns a proper wa.me link.
+// Bare numbers starting with "0" are treated as local Bangladeshi numbers
+// and get the +880 country code prefixed.
+function normalizeWhatsappLink(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+
+  let digits = trimmed.replace(/[^\d]/g, "");
+  if (digits.startsWith("0")) {
+    digits = "880" + digits.slice(1);
+  }
+  return digits ? `https://wa.me/${digits}` : null;
+}
+
 export function Footer() {
   const { data: settings } = useGetSettings();
   const { data: voiceArtists } = useListVoiceArtists();
@@ -67,7 +84,7 @@ export function Footer() {
               <SocialLink href={settings?.youtube} icon={<FaYoutube />} label="YouTube" onClick={handleLinkClick} />
               <SocialLink href={settings?.telegram} icon={<FaTelegram />} label="Telegram" onClick={handleLinkClick} />
               <SocialLink href={settings?.instagram} icon={<FaInstagram />} label="Instagram" onClick={handleLinkClick} />
-              <SocialLink href={settings?.whatsapp} icon={<FaWhatsapp />} label="WhatsApp" onClick={handleLinkClick} />
+              <SocialLink href={normalizeWhatsappLink(settings?.whatsapp)} icon={<FaWhatsapp />} label="WhatsApp" onClick={handleLinkClick} />
               <SocialLink href={settings?.dailymotion} icon={<SiDailymotion />} label="Dailymotion" onClick={handleLinkClick} />
               <SocialLink href={settings?.rumble} icon={<SiRumble />} label="Rumble" onClick={handleLinkClick} />
             </div>
