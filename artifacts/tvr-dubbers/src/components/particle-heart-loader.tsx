@@ -11,15 +11,26 @@ function heartPoint(t: number) {
   return { x, y };
 }
 
-interface Spark {
+interface Ember {
   x: number;
   y: number;
+  vx: number;
+  vy: number;
   life: number;
+  size: number;
 }
 
-// A glowing particle "draws" itself around a heart-shaped outline on loop,
-// leaving a fading trail of neon sparks behind it. Used in place of a plain
-// pulsing skeleton while content is still loading.
+type Phase = "drawing" | "holding" | "fading";
+
+const DRAW_SECONDS = 2.6;
+const HOLD_SECONDS = 0.5;
+const FADE_SECONDS = 0.45;
+
+// A glowing neon line "draws" a full heart outline (like a lit fuse tracing
+// the shape), leaving the already-traced portion lit and solid while a burst
+// of drifting embers sparks off the current tip. Once the heart is complete
+// it holds briefly, fades out, then loops. Used in place of a plain pulsing
+// skeleton while content is still loading.
 export function ParticleHeartLoader({ className }: { className?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -30,13 +41,32 @@ export function ParticleHeartLoader({ className }: { className?: string }) {
     if (!ctx) return;
 
     let raf = 0;
-    let progress = Math.random(); // stagger multiple tiles so they don't all sync up
-    const sparks: Spark[] = [];
-    const SPEED = 0.0035;
-    const SPARKS_PER_FRAME = 3;
-
     let width = 0;
     let height = 0;
+    let last = performance.now();
+
+    let phase: Phase = "drawing";
+    let progress = 0;
+    let holdT = 0;
+    let fadeAlpha = 1;
+    const embers: Ember[] = [];
+
+    // Stagger multiple tiles so they don't all sync up: start each instance
+    // at a random point within the draw/hold/fade cycle.
+    const TOTAL_SECONDS = DRAW_SECONDS + HOLD_SECONDS + FADE_SECONDS;
+    const seed = Math.random() * TOTAL_SECONDS;
+    if (seed < DRAW_SECONDS) {
+      phase = "drawing";
+      progress = seed / DRAW_SECONDS;
+    } else if (seed < DRAW_SECONDS + HOLD_SECONDS) {
+      phase = "holding";
+      progress = 1;
+      holdT = seed - DRAW_SECONDS;
+    } else {
+      phase = "fading";
+      progress = 1;
+      fadeAlpha = 1 - (seed - DRAW_SECONDS - HOLD_SECONDS) / FADE_SECONDS;
+    }
 
     function resize() {
       if (!canvas || !ctx) return;
@@ -61,63 +91,115 @@ export function ParticleHeartLoader({ className }: { className?: string }) {
       };
     }
 
-    function frame() {
+    function frame(now: number) {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
       if (!ctx) return;
       ctx.clearRect(0, 0, width, height);
 
-      progress = (progress + SPEED) % 1;
-      const t = progress * Math.PI * 2;
+      if (phase === "drawing") {
+        progress += dt / DRAW_SECONDS;
+        if (progress >= 1) {
+          progress = 1;
+          phase = "holding";
+          holdT = 0;
+        }
+      } else if (phase === "holding") {
+        holdT += dt;
+        if (holdT >= HOLD_SECONDS) {
+          phase = "fading";
+          fadeAlpha = 1;
+        }
+      } else if (phase === "fading") {
+        fadeAlpha -= dt / FADE_SECONDS;
+        if (fadeAlpha <= 0) {
+          fadeAlpha = 0;
+          phase = "drawing";
+          progress = 0;
+          embers.length = 0;
+        }
+      }
 
-      // Faint full outline as a guide
+      const alpha = phase === "fading" ? Math.max(0, fadeAlpha) : 1;
+      if (alpha <= 0) {
+        raf = requestAnimationFrame(frame);
+        return;
+      }
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      // The lit portion of the heart, drawn as a warm neon gradient tube
+      const tEnd = Math.max(0.0001, progress) * Math.PI * 2;
+      const steps = Math.max(2, Math.round(220 * Math.max(0.0001, progress)));
+
+      const gradient = ctx.createLinearGradient(0, 0, width, height);
+      gradient.addColorStop(0, "#0891b2");
+      gradient.addColorStop(1, "#a5f3fc");
+
       ctx.beginPath();
-      for (let i = 0; i <= 160; i++) {
-        const tt = (i / 160) * Math.PI * 2;
-        const p = project(tt);
+      for (let i = 0; i <= steps; i++) {
+        const t = (i / 220) * Math.PI * 2 <= tEnd ? (i / 220) * Math.PI * 2 : tEnd;
+        const p = project(t);
         if (i === 0) ctx.moveTo(p.x, p.y);
         else ctx.lineTo(p.x, p.y);
       }
-      ctx.closePath();
-      ctx.strokeStyle = "rgba(34, 211, 238, 0.10)";
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = gradient;
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.shadowColor = "rgba(34, 211, 238, 0.95)";
+      ctx.shadowBlur = 14;
       ctx.stroke();
 
-      // Emit new sparks near the current head position
-      for (let i = 0; i < SPARKS_PER_FRAME; i++) {
-        const jitterT = t - Math.random() * 0.04;
-        const p = project(jitterT);
-        sparks.push({
-          x: p.x + (Math.random() - 0.5) * 3,
-          y: p.y + (Math.random() - 0.5) * 3,
-          life: 1,
-        });
+      // Extra bright core near the very tip
+      if (progress < 1) {
+        const tip = project(tEnd);
+        ctx.beginPath();
+        ctx.arc(tip.x, tip.y, 2.6, 0, Math.PI * 2);
+        ctx.fillStyle = "#ffffff";
+        ctx.shadowColor = "#67e8f9";
+        ctx.shadowBlur = 20;
+        ctx.fill();
+
+        // Spawn embers bursting off the tip
+        for (let i = 0; i < 2; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 6 + Math.random() * 22;
+          embers.push({
+            x: tip.x,
+            y: tip.y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 6,
+            life: 1,
+            size: 0.6 + Math.random() * 1.6,
+          });
+        }
       }
 
-      // Draw + fade existing sparks
-      for (let i = sparks.length - 1; i >= 0; i--) {
-        const s = sparks[i];
-        s.life -= 0.02;
-        if (s.life <= 0) {
-          sparks.splice(i, 1);
+      // Update + draw embers
+      ctx.shadowBlur = 0;
+      for (let i = embers.length - 1; i >= 0; i--) {
+        const e = embers[i];
+        e.life -= dt * 1.15;
+        if (e.life <= 0) {
+          embers.splice(i, 1);
           continue;
         }
+        e.x += e.vx * dt;
+        e.y += e.vy * dt;
+        e.vx *= 0.94;
+        e.vy = e.vy * 0.94 + 14 * dt;
+
         ctx.beginPath();
-        ctx.arc(s.x, s.y, 0.6 + 1.6 * s.life, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(103, 232, 249, ${s.life})`;
+        ctx.arc(e.x, e.y, e.size * e.life, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(165, 243, 252, ${e.life})`;
         ctx.shadowColor = "rgba(34, 211, 238, 0.9)";
-        ctx.shadowBlur = 8;
+        ctx.shadowBlur = 6;
         ctx.fill();
       }
       ctx.shadowBlur = 0;
-
-      // Bright glowing head particle
-      const head = project(t);
-      ctx.beginPath();
-      ctx.arc(head.x, head.y, 3, 0, Math.PI * 2);
-      ctx.fillStyle = "#ffffff";
-      ctx.shadowColor = "#22d3ee";
-      ctx.shadowBlur = 18;
-      ctx.fill();
-      ctx.shadowBlur = 0;
+      ctx.restore();
 
       raf = requestAnimationFrame(frame);
     }
