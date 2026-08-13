@@ -11,26 +11,33 @@ function heartPoint(t: number) {
   return { x, y };
 }
 
-interface Ember {
+type DustState = "idle" | "converging";
+
+interface Dust {
   x: number;
   y: number;
-  vx: number;
-  vy: number;
-  life: number;
+  startX: number;
+  startY: number;
+  targetT: number; // point on the curve (angle) this particle is assigned to
+  state: DustState;
+  timer: number; // 0..1 progress of the converge animation
   size: number;
+  baseAlpha: number;
+  flicker: number;
 }
 
 type Phase = "drawing" | "holding" | "fading";
 
-const DRAW_SECONDS = 2.6;
+const DRAW_SECONDS = 3.2;
 const HOLD_SECONDS = 0.5;
-const FADE_SECONDS = 0.45;
+const FADE_SECONDS = 0.5;
+const CONVERGE_SECONDS = 0.45;
+const DUST_COUNT = 90;
 
-// A glowing neon line "draws" a full heart outline (like a lit fuse tracing
-// the shape), leaving the already-traced portion lit and solid while a burst
-// of drifting embers sparks off the current tip. Once the heart is complete
-// it holds briefly, fades out, then loops. Used in place of a plain pulsing
-// skeleton while content is still loading.
+// Ambient dust particles scattered around the tile fly inward and merge into
+// a heart-shaped outline as it traces itself, thinning the surrounding cloud
+// as they're absorbed. The completed portion of the line stays solidly lit.
+// Loops: draws, holds, fades out, and refills with a fresh cloud.
 export function ParticleHeartLoader({ className }: { className?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -49,24 +56,7 @@ export function ParticleHeartLoader({ className }: { className?: string }) {
     let progress = 0;
     let holdT = 0;
     let fadeAlpha = 1;
-    const embers: Ember[] = [];
-
-    // Stagger multiple tiles so they don't all sync up: start each instance
-    // at a random point within the draw/hold/fade cycle.
-    const TOTAL_SECONDS = DRAW_SECONDS + HOLD_SECONDS + FADE_SECONDS;
-    const seed = Math.random() * TOTAL_SECONDS;
-    if (seed < DRAW_SECONDS) {
-      phase = "drawing";
-      progress = seed / DRAW_SECONDS;
-    } else if (seed < DRAW_SECONDS + HOLD_SECONDS) {
-      phase = "holding";
-      progress = 1;
-      holdT = seed - DRAW_SECONDS;
-    } else {
-      phase = "fading";
-      progress = 1;
-      fadeAlpha = 1 - (seed - DRAW_SECONDS - HOLD_SECONDS) / FADE_SECONDS;
-    }
+    let dust: Dust[] = [];
 
     function resize() {
       if (!canvas || !ctx) return;
@@ -89,6 +79,37 @@ export function ParticleHeartLoader({ className }: { className?: string }) {
         x: width / 2 + x * scale,
         y: height / 2 - y * scale * 0.92,
       };
+    }
+
+    function spawnDust(): Dust[] {
+      const arr: Dust[] = [];
+      for (let i = 0; i < DUST_COUNT; i++) {
+        // Scatter roughly around the heart's bounding area, a bit wider than
+        // the shape itself, biased toward the center rather than edge-to-edge.
+        const angle = Math.random() * Math.PI * 2;
+        const radius = (0.25 + Math.random() * 0.75) * Math.min(width, height) * 0.55;
+        const x = width / 2 + Math.cos(angle) * radius;
+        const y = height / 2 + Math.sin(angle) * radius * 0.9;
+        arr.push({
+          x,
+          y,
+          startX: x,
+          startY: y,
+          targetT: Math.random() * Math.PI * 2,
+          state: "idle",
+          timer: 0,
+          size: 0.5 + Math.random() * 1.3,
+          baseAlpha: 0.25 + Math.random() * 0.45,
+          flicker: Math.random() * Math.PI * 2,
+        });
+      }
+      return arr;
+    }
+    dust = spawnDust();
+
+    function resetCycle() {
+      progress = 0;
+      dust = spawnDust();
     }
 
     function frame(now: number) {
@@ -115,8 +136,7 @@ export function ParticleHeartLoader({ className }: { className?: string }) {
         if (fadeAlpha <= 0) {
           fadeAlpha = 0;
           phase = "drawing";
-          progress = 0;
-          embers.length = 0;
+          resetCycle();
         }
       }
 
@@ -129,17 +149,25 @@ export function ParticleHeartLoader({ className }: { className?: string }) {
       ctx.save();
       ctx.globalAlpha = alpha;
 
-      // The lit portion of the heart, drawn as a warm neon gradient tube
-      const tEnd = Math.max(0.0001, progress) * Math.PI * 2;
-      const steps = Math.max(2, Math.round(220 * Math.max(0.0001, progress)));
+      const sweepAngle = progress * Math.PI * 2;
 
+      // Activate dust whose assigned point the sweep has just reached
+      for (const d of dust) {
+        if (d.state === "idle" && d.targetT <= sweepAngle) {
+          d.state = "converging";
+          d.timer = 0;
+        }
+      }
+
+      // The lit portion of the heart: a solid glowing gradient stroke
+      const steps = Math.max(2, Math.round(240 * Math.max(0.0001, progress)));
       const gradient = ctx.createLinearGradient(0, 0, width, height);
       gradient.addColorStop(0, "#0891b2");
       gradient.addColorStop(1, "#a5f3fc");
 
       ctx.beginPath();
       for (let i = 0; i <= steps; i++) {
-        const t = (i / 220) * Math.PI * 2 <= tEnd ? (i / 220) * Math.PI * 2 : tEnd;
+        const t = Math.min((i / 240) * Math.PI * 2, sweepAngle);
         const p = project(t);
         if (i === 0) ctx.moveTo(p.x, p.y);
         else ctx.lineTo(p.x, p.y);
@@ -149,58 +177,57 @@ export function ParticleHeartLoader({ className }: { className?: string }) {
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.shadowColor = "rgba(34, 211, 238, 0.95)";
-      ctx.shadowBlur = 14;
+      ctx.shadowBlur = 13;
       ctx.stroke();
+      ctx.shadowBlur = 0;
 
-      // Extra bright core near the very tip
+      // Draw dust: idle particles twinkle in place, converging ones fly
+      // toward their assigned point on the curve and fade as they arrive
+      for (const d of dust) {
+        if (d.state === "idle") {
+          const flick = 0.75 + 0.25 * Math.sin(d.flicker + now * 0.003);
+          ctx.beginPath();
+          ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(103, 232, 249, ${d.baseAlpha * flick})`;
+          ctx.shadowColor = "rgba(34, 211, 238, 0.6)";
+          ctx.shadowBlur = 3;
+          ctx.fill();
+        } else {
+          d.timer += dt / CONVERGE_SECONDS;
+          const tt = Math.min(1, d.timer);
+          const ease = 1 - Math.pow(1 - tt, 3); // ease-out
+          const target = project(d.targetT);
+          d.x = d.startX + (target.x - d.startX) * ease;
+          d.y = d.startY + (target.y - d.startY) * ease;
+
+          const fadeOut = 1 - ease;
+          ctx.beginPath();
+          ctx.arc(d.x, d.y, d.size + 1.2 * ease, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(165, 243, 252, ${0.35 + 0.65 * fadeOut})`;
+          ctx.shadowColor = "rgba(34, 211, 238, 0.95)";
+          ctx.shadowBlur = 7;
+          ctx.fill();
+        }
+      }
+      ctx.shadowBlur = 0;
+
+      // Drop fully-converged particles from the pool (they're absorbed into
+      // the solid line now)
+      dust = dust.filter(d => !(d.state === "converging" && d.timer >= 1));
+
+      // Bright hot point at the current tip
       if (progress < 1) {
-        const tip = project(tEnd);
+        const tip = project(sweepAngle);
         ctx.beginPath();
         ctx.arc(tip.x, tip.y, 2.6, 0, Math.PI * 2);
         ctx.fillStyle = "#ffffff";
         ctx.shadowColor = "#67e8f9";
-        ctx.shadowBlur = 20;
+        ctx.shadowBlur = 18;
         ctx.fill();
-
-        // Spawn embers bursting off the tip
-        for (let i = 0; i < 2; i++) {
-          const angle = Math.random() * Math.PI * 2;
-          const speed = 6 + Math.random() * 22;
-          embers.push({
-            x: tip.x,
-            y: tip.y,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed - 6,
-            life: 1,
-            size: 0.6 + Math.random() * 1.6,
-          });
-        }
+        ctx.shadowBlur = 0;
       }
 
-      // Update + draw embers
-      ctx.shadowBlur = 0;
-      for (let i = embers.length - 1; i >= 0; i--) {
-        const e = embers[i];
-        e.life -= dt * 1.15;
-        if (e.life <= 0) {
-          embers.splice(i, 1);
-          continue;
-        }
-        e.x += e.vx * dt;
-        e.y += e.vy * dt;
-        e.vx *= 0.94;
-        e.vy = e.vy * 0.94 + 14 * dt;
-
-        ctx.beginPath();
-        ctx.arc(e.x, e.y, e.size * e.life, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(165, 243, 252, ${e.life})`;
-        ctx.shadowColor = "rgba(34, 211, 238, 0.9)";
-        ctx.shadowBlur = 6;
-        ctx.fill();
-      }
-      ctx.shadowBlur = 0;
       ctx.restore();
-
       raf = requestAnimationFrame(frame);
     }
     raf = requestAnimationFrame(frame);
