@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { 
   useGetSettings, 
   useGetTrailer, 
@@ -14,6 +14,7 @@ import { Play, Calendar, FolderOpen, X } from "lucide-react";
 import { format, differenceInSeconds } from "date-fns";
 import { SparkleBackground } from "@/components/sparkle-background";
 import { CursorEffects } from "@/components/cursor-effects";
+import { Reveal } from "@/components/reveal";
 
 // Reusable IntersectionObserver Image
 function LazyImage({ src, alt, className }: { src: string, alt: string, className?: string }) {
@@ -100,6 +101,14 @@ export function Home() {
   // Last watched
   const lastWatchedId = typeof localStorage !== 'undefined' ? localStorage.getItem("tvr_last_watched") : null;
 
+  // Pointer spotlight: track the cursor over cards so the .spotlight glow
+  // follows it (consumed by the .spotlight::after gradient in index.css)
+  const handleSpotlightMove = (e: ReactMouseEvent<HTMLElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    e.currentTarget.style.setProperty("--mx", `${e.clientX - rect.left}px`);
+    e.currentTarget.style.setProperty("--my", `${e.clientY - rect.top}px`);
+  };
+
   const handleNextEpisode = (currentId: number) => {
     if (!allEpisodes) return;
     const currentIndex = allEpisodes.findIndex(ep => ep.id === currentId);
@@ -158,7 +167,8 @@ export function Home() {
         </section>
 
         {/* COUNTDOWN TIMER */}
-        <section className="mb-24 flex justify-center animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-200 fill-mode-both">
+        <Reveal className="mb-24" delay={100}>
+        <section className="flex justify-center">
           <div className="glass-card p-6 md:p-10 rounded-3xl border-t border-white/20 relative overflow-hidden group max-w-3xl w-full text-center">
             <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-purple-500/10 opacity-50"></div>
             
@@ -189,10 +199,12 @@ export function Home() {
             )}
           </div>
         </section>
+        </Reveal>
 
         {/* SPECIAL COLLECTION FOLDER */}
         {specialEpisodes && specialEpisodes.length > 0 && (
-          <section className="mb-24 animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-300 fill-mode-both">
+          <Reveal className="mb-24" delay={100}>
+          <section>
             <div className="flex items-end justify-between mb-8">
               <div>
                 <h3 className="text-2xl md:text-3xl font-display font-bold text-foreground flex items-center gap-3">
@@ -208,9 +220,10 @@ export function Home() {
             
             {/* 16:9 Special Banner Tile */}
             {settings?.specialFolderThumbnail && (
-              <div className="mb-6 rounded-2xl overflow-hidden border border-cyan-500/30 shadow-[0_0_30px_rgba(8,145,178,0.15)] relative group cursor-pointer"
+              <div className="mb-6 rounded-2xl overflow-hidden border border-cyan-500/30 shadow-[0_0_30px_rgba(8,145,178,0.15)] relative group cursor-pointer spotlight"
                 style={{ aspectRatio: "16/9" }}
                 onClick={() => specialEpisodes[0] && setActiveEpisodeId(specialEpisodes[0].id)}
+                onMouseMove={handleSpotlightMove}
               >
                 <img
                   src={settings.specialFolderThumbnail}
@@ -234,10 +247,11 @@ export function Home() {
 
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               {specialEpisodes.slice(0, 6).map((ep) => (
-                <div 
+                <div
                   key={ep.id}
-                  className="group relative aspect-video rounded-xl overflow-hidden cursor-pointer border border-white/10 hover:border-cyan-500/50 transition-all hover:scale-[1.02] hover:-translate-y-1 hover:shadow-[0_10px_20px_rgba(0,0,0,0.5)]"
+                  className="group relative aspect-video rounded-xl overflow-hidden cursor-pointer border border-white/10 hover:border-cyan-500/50 transition-all hover:scale-[1.02] hover:-translate-y-1 hover:shadow-[0_10px_20px_rgba(0,0,0,0.5)] spotlight"
                   onClick={() => setActiveEpisodeId(ep.id)}
+                  onMouseMove={handleSpotlightMove}
                 >
                   <LazyImage src={ep.thumbnailUrl || ""} alt={ep.title} />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-80 group-hover:opacity-100 transition-opacity"></div>
@@ -254,10 +268,12 @@ export function Home() {
               ))}
             </div>
           </section>
+          </Reveal>
         )}
 
         {/* ALL EPISODES GRID */}
-        <section id="episodes" className="animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-500 fill-mode-both">
+        <Reveal id="episodes" delay={100}>
+        <section>
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
             <h3 className="text-2xl md:text-3xl font-display font-bold text-foreground border-l-4 border-cyan-500 pl-4">
               All Episodes
@@ -294,15 +310,16 @@ export function Home() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {filteredEpisodes.map((ep) => {
+              {filteredEpisodes.map((ep, i) => {
                 const isNew = differenceInSeconds(new Date(), new Date(ep.createdAt)) < 48 * 3600;
                 const isLastWatched = lastWatchedId === ep.id.toString();
 
                 return (
-                  <div 
-                    key={ep.id}
+                  <Reveal key={ep.id} delay={(i % 4) * 70} className="h-full">
+                  <div
                     onClick={() => setActiveEpisodeId(ep.id)}
-                    className="group glass-card rounded-xl overflow-hidden cursor-pointer transition-all hover:scale-[1.02] hover:-translate-y-1 color-cycle-border border-2 relative flex flex-col"
+                    onMouseMove={handleSpotlightMove}
+                    className="group glass-card rounded-xl overflow-hidden cursor-pointer transition-all hover:scale-[1.02] hover:-translate-y-1 color-cycle-border border-2 relative flex flex-col spotlight h-full"
                   >
                     <div className="aspect-video relative overflow-hidden">
                       <LazyImage src={ep.thumbnailUrl || ""} alt={ep.title} />
@@ -351,11 +368,13 @@ export function Home() {
                       </div>
                     </div>
                   </div>
+                  </Reveal>
                 );
               })}
             </div>
           )}
         </section>
+        </Reveal>
 
       </main>
 

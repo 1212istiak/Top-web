@@ -165,6 +165,55 @@
   }
 }
 
+/* Pointer-tracked spotlight: a soft glow that follows the cursor across a
+   card. The card must be `relative overflow-hidden` and set --mx/--my from
+   its onMouseMove handler (see home.tsx). */
+.spotlight::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  background: radial-gradient(
+    220px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(103, 232, 249, 0.18),
+    rgba(103, 232, 249, 0.06) 40%,
+    transparent 65%
+  );
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.spotlight:hover::after {
+  opacity: 1;
+}
+
+/* Scroll-reveal: elements start hidden/blurred and animate in when the
+   IntersectionObserver adds .revealed (see components/reveal.tsx). */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  filter: blur(6px);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 0.7s ease;
+  transition-delay: var(--reveal-delay, 0ms);
+  will-change: opacity, transform, filter;
+}
+.reveal.revealed {
+  opacity: 1;
+  transform: translateY(0);
+  filter: blur(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    filter: none;
+    transition: none;
+  }
+}
+
 /* Custom cursor: hide the native pointer on real desktop mice so only the
    dot + ring from CursorEffects is visible. Left untouched on touch devices. */
 @media (hover: hover) and (pointer: fine) {
