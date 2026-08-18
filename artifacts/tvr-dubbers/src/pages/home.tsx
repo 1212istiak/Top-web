@@ -8,7 +8,6 @@ import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { VideoModal } from "@/components/video-modal";
 import { TrailerModal } from "@/components/trailer-modal";
-import { ParticleHeartLoader } from "@/components/particle-heart-loader";
 import { Button } from "@/components/ui/button";
 import { Play, Calendar, FolderOpen, X } from "lucide-react";
 import { format, differenceInSeconds } from "date-fns";
@@ -299,9 +298,7 @@ export function Home() {
           {isEpisodesLoading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-                <div key={i} className="aspect-video rounded-xl bg-white/5 border border-white/5 overflow-hidden relative">
-                  <ParticleHeartLoader className="absolute inset-0 w-full h-full" />
-                </div>
+                <div key={i} className="aspect-video rounded-xl bg-white/5 animate-pulse border border-white/5"></div>
               ))}
             </div>
           ) : filteredEpisodes.length === 0 ? (
