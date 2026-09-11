@@ -24,6 +24,7 @@ import { format } from "date-fns";
 import { Trash2, Edit, Plus, LogOut, ChevronLeft } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { RockyTab } from "@/components/rocky-tab";
 
 export function AdminPage() {
   const { isAuthenticated, setToken } = useAuth();
@@ -57,9 +58,10 @@ export function AdminPage() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <Tabs defaultValue="episodes" className="flex flex-col md:flex-row gap-8">
+        <Tabs defaultValue="rocky" className="flex flex-col md:flex-row gap-8">
           
           <TabsList className="flex flex-col w-full md:w-64 h-auto bg-card border border-border p-2 space-y-1">
+            <TabsTrigger value="rocky" className="w-full justify-start data-[state=active]:bg-cyan-900/30 data-[state=active]:text-cyan-400">🤖 Rocky</TabsTrigger>
             <TabsTrigger value="episodes" className="w-full justify-start data-[state=active]:bg-cyan-900/30 data-[state=active]:text-cyan-400">Episodes</TabsTrigger>
             <TabsTrigger value="trailer" className="w-full justify-start data-[state=active]:bg-cyan-900/30 data-[state=active]:text-cyan-400">Trailer</TabsTrigger>
             <TabsTrigger value="settings" className="w-full justify-start data-[state=active]:bg-cyan-900/30 data-[state=active]:text-cyan-400">Site Settings</TabsTrigger>
@@ -70,6 +72,7 @@ export function AdminPage() {
           </TabsList>
 
           <div className="flex-1 glass-card p-6 md:p-8 rounded-xl border border-border">
+            <TabsContent value="rocky"><RockyTab /></TabsContent>
             <TabsContent value="episodes"><EpisodesTab /></TabsContent>
             <TabsContent value="trailer"><TrailerTab /></TabsContent>
             <TabsContent value="settings"><SettingsTab /></TabsContent>

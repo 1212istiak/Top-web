@@ -7,6 +7,7 @@ import settingsRouter from "./settings";
 import trailerRouter from "./trailer";
 import voiceArtistsRouter from "./voice-artists";
 import adminRouter from "./admin";
+import rockyRouter from "./rocky";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(settingsRouter);
 router.use(trailerRouter);
 router.use(voiceArtistsRouter);
 router.use(adminRouter);
+router.use(rockyRouter);
 
 export default router;
