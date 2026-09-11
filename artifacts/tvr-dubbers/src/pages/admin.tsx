@@ -61,7 +61,7 @@ export function AdminPage() {
         <Tabs defaultValue="rocky" className="flex flex-col md:flex-row gap-8">
           
           <TabsList className="flex flex-col w-full md:w-64 h-auto bg-card border border-border p-2 space-y-1">
-            <TabsTrigger value="rocky" className="w-full justify-start data-[state=active]:bg-cyan-900/30 data-[state=active]:text-cyan-400">🤖 Rocky</TabsTrigger>
+            <TabsTrigger value="rocky" className="w-full justify-start data-[state=active]:bg-cyan-900/30 data-[state=active]:text-cyan-400">🤖 Jerin</TabsTrigger>
             <TabsTrigger value="episodes" className="w-full justify-start data-[state=active]:bg-cyan-900/30 data-[state=active]:text-cyan-400">Episodes</TabsTrigger>
             <TabsTrigger value="trailer" className="w-full justify-start data-[state=active]:bg-cyan-900/30 data-[state=active]:text-cyan-400">Trailer</TabsTrigger>
             <TabsTrigger value="settings" className="w-full justify-start data-[state=active]:bg-cyan-900/30 data-[state=active]:text-cyan-400">Site Settings</TabsTrigger>

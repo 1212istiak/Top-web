@@ -86,7 +86,7 @@ export function RockyTab() {
   return (
     <div className="space-y-6 animate-in fade-in">
       <div>
-        <h2 className="text-2xl font-display font-bold text-cyan-400">Rocky</h2>
+        <h2 className="text-2xl font-display font-bold text-cyan-400">Jerin</h2>
         <p className="text-sm text-muted-foreground mt-1">Your TVR Dubbers copilot — voice chat, scene ideas, titles, and growth insights.</p>
       </div>
 
@@ -131,7 +131,7 @@ function VoiceChatPanel() {
       setMessages((m) => [...m, { role: "rocky", text: reply }]);
       speak(reply, muted);
     } catch (err: any) {
-      toast({ title: "Rocky error", description: err.message, variant: "destructive" });
+      toast({ title: "Jerin error", description: err.message, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -182,7 +182,7 @@ function VoiceChatPanel() {
 
       <div className="border border-border rounded-lg bg-black/20 p-4 h-80 overflow-y-auto space-y-3">
         {messages.length === 0 && (
-          <p className="text-sm text-muted-foreground">Tap the mic or type below to talk to Rocky.</p>
+          <p className="text-sm text-muted-foreground">Tap the mic or type below to talk to Jerin.</p>
         )}
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -245,7 +245,7 @@ function PromptPanel({ mode, placeholder, buttonLabel }: { mode: string; placeho
       const reply = await askRocky(mode, input);
       setOutput(reply);
     } catch (err: any) {
-      toast({ title: "Rocky error", description: err.message, variant: "destructive" });
+      toast({ title: "Jerin error", description: err.message, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -312,7 +312,7 @@ function GrowthPanel() {
       const reply = await askRocky("growth", input, imageData || undefined);
       setOutput(reply);
     } catch (err: any) {
-      toast({ title: "Rocky error", description: err.message, variant: "destructive" });
+      toast({ title: "Jerin error", description: err.message, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
