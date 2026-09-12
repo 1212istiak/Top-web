@@ -4,16 +4,14 @@ import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
-const GEMINI_MODEL = "gemini-3.8-flash";
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const ALLOWED_MODELS = ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash"] as const;
+type GeminiModel = typeof ALLOWED_MODELS[number];
 
-// Stay a little under Gemini's free-tier cap of 20 requests/minute for gemini-3.6-flash,
-// so we can give a clean warning before Google's own 429 kicks in.
+// Stay under free-tier RPM cap (rolling 60s window)
 let requestLog: number[] = [];
 function isRateLimited(): boolean {
   const now = Date.now();
-  const window = 60 * 1000;
-  requestLog = requestLog.filter((t) => now - t < window);
+  requestLog = requestLog.filter((t) => now - t < 60_000);
   if (requestLog.length >= 18) return true;
   requestLog.push(now);
   return false;
@@ -49,11 +47,13 @@ router.post("/rocky/generate", requireAdmin, async (req, res): Promise<void> => 
     return;
   }
 
-  const { mode, message, image, imageMimeType } = req.body as {
+  const { mode, message, image, imageMimeType, model, thinking } = req.body as {
     mode?: string;
     message?: string;
-    image?: string; // base64, no data: prefix
+    image?: string;
     imageMimeType?: string;
+    model?: string;
+    thinking?: boolean;
   };
 
   if ((!message || !message.trim()) && !image) {
@@ -61,31 +61,37 @@ router.post("/rocky/generate", requireAdmin, async (req, res): Promise<void> => 
     return;
   }
 
+  // Validate model — whitelist only, never trust raw user input for API calls
+  const selectedModel: GeminiModel = ALLOWED_MODELS.includes(model as GeminiModel)
+    ? (model as GeminiModel)
+    : "gemini-3.8-flash";
+
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent`;
   const systemPrompt = SYSTEM_PROMPTS[mode || "chat"] || SYSTEM_PROMPTS.chat;
 
   const parts: any[] = [];
   if (message && message.trim()) parts.push({ text: message });
   if (image) {
-    parts.push({
-      inlineData: {
-        mimeType: imageMimeType || "image/jpeg",
-        data: image,
-      },
-    });
+    parts.push({ inlineData: { mimeType: imageMimeType || "image/jpeg", data: image } });
     if (parts.length === 1) {
-      // image only, no caption — give the model something to anchor on
       parts.unshift({ text: "Analyze this screenshot of comments/messages for a Bangla BTTH dubbing channel. Summarize sentiment, recurring requests, and what seems to drive loyalty." });
     }
   }
 
+  // Build request body — disable thinking when Quick mode is selected
+  const requestBody: any = {
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+    contents: [{ role: "user", parts }],
+  };
+  if (thinking === false) {
+    requestBody.generationConfig = { thinkingConfig: { thinkingBudget: 0 } };
+  }
+
   try {
-    const response = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+    const response = await fetch(`${geminiUrl}?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ role: "user", parts }],
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -100,7 +106,7 @@ router.post("/rocky/generate", requireAdmin, async (req, res): Promise<void> => 
           ? `Free tier limit hit — try again in about ${seconds} seconds.`
           : "Free tier request limit hit for this minute — wait a bit and try again.";
       } else if (response.status === 404) {
-        friendlyError = "Jerin's AI model isn't available right now — this usually means Google renamed or retired it. Tell your developer to check the model name.";
+        friendlyError = `Model ${selectedModel} isn't available on your key — try switching to a different model in Jerin's settings.`;
       } else if (response.status === 503) {
         friendlyError = "Gemini is overloaded right now — try again in a moment.";
       } else if (response.status === 400) {
@@ -113,10 +119,10 @@ router.post("/rocky/generate", requireAdmin, async (req, res): Promise<void> => 
 
     const data = (await response.json()) as any;
     const text =
-      data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("") ||
+      data?.candidates?.[0]?.content?.parts?.filter((p: any) => p.text).map((p: any) => p.text).join("") ||
       "Jerin didn't return a response — try rephrasing.";
 
-    res.json({ text });
+    res.json({ text, model: selectedModel });
   } catch (err) {
     logger.error({ err }, "Jerin generate failed");
     res.status(500).json({ error: "Something went wrong talking to Jerin's brain." });
