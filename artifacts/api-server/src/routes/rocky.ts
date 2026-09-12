@@ -7,14 +7,14 @@ const router: IRouter = Router();
 const GEMINI_MODEL = "gemini-3.6-flash";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
-// Simple in-memory rate limit: 30 requests / 10 minutes per admin session
-// (admin-only route, but Gemini free tier has daily caps we don't want to blow through by accident)
+// Stay a little under Gemini's free-tier cap of 20 requests/minute for gemini-3.6-flash,
+// so we can give a clean warning before Google's own 429 kicks in.
 let requestLog: number[] = [];
 function isRateLimited(): boolean {
   const now = Date.now();
-  const window = 10 * 60 * 1000;
+  const window = 60 * 1000;
   requestLog = requestLog.filter((t) => now - t < window);
-  if (requestLog.length >= 30) return true;
+  if (requestLog.length >= 18) return true;
   requestLog.push(now);
   return false;
 }
@@ -38,7 +38,7 @@ const SYSTEM_PROMPTS: Record<string, string> = {
 
 router.post("/rocky/generate", requireAdmin, async (req, res): Promise<void> => {
   if (isRateLimited()) {
-    res.status(429).json({ error: "Jerin is cooling down — try again in a few minutes." });
+    res.status(429).json({ error: "Jerin is cooling down — you've hit the free-tier request limit for this minute. Try again shortly." });
     return;
   }
 
@@ -91,7 +91,23 @@ router.post("/rocky/generate", requireAdmin, async (req, res): Promise<void> => 
     if (!response.ok) {
       const errText = await response.text();
       logger.error({ status: response.status, errText }, "Gemini API error");
-      res.status(502).json({ error: "Jerin's brain (Gemini) returned an error." });
+
+      let friendlyError = "Jerin's brain (Gemini) returned an error.";
+      if (response.status === 429) {
+        const retryMatch = errText.match(/retry in ([\d.]+)s/i);
+        const seconds = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : null;
+        friendlyError = seconds
+          ? `Free tier limit hit — try again in about ${seconds} seconds.`
+          : "Free tier request limit hit for this minute — wait a bit and try again.";
+      } else if (response.status === 404) {
+        friendlyError = "Jerin's AI model isn't available right now — this usually means Google renamed or retired it. Tell your developer to check the model name.";
+      } else if (response.status === 503) {
+        friendlyError = "Gemini is overloaded right now — try again in a moment.";
+      } else if (response.status === 400) {
+        friendlyError = "That request wasn't formatted right for Gemini — try shortening it or removing the image.";
+      }
+
+      res.status(502).json({ error: friendlyError });
       return;
     }
 
