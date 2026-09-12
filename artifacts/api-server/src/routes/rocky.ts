@@ -47,17 +47,18 @@ router.post("/rocky/generate", requireAdmin, async (req, res): Promise<void> => 
     return;
   }
 
-  const { mode, message, image, imageMimeType, model, thinking } = req.body as {
+  const { mode, message, image, imageMimeType, model, thinking, videoUrl } = req.body as {
     mode?: string;
     message?: string;
     image?: string;
     imageMimeType?: string;
     model?: string;
     thinking?: boolean;
+    videoUrl?: string; // public video URL (YouTube, or a direct file URL) for Gemini to watch
   };
 
-  if ((!message || !message.trim()) && !image) {
-    res.status(400).json({ error: "Message or image is required" });
+  if ((!message || !message.trim()) && !image && !videoUrl) {
+    res.status(400).json({ error: "Message, image, or video URL is required" });
     return;
   }
 
@@ -75,6 +76,12 @@ router.post("/rocky/generate", requireAdmin, async (req, res): Promise<void> => 
     parts.push({ inlineData: { mimeType: imageMimeType || "image/jpeg", data: image } });
     if (parts.length === 1) {
       parts.unshift({ text: "Analyze this screenshot of comments/messages for a Bangla BTTH dubbing channel. Summarize sentiment, recurring requests, and what seems to drive loyalty." });
+    }
+  }
+  if (videoUrl) {
+    parts.push({ file_data: { file_uri: videoUrl } });
+    if (!message || !message.trim()) {
+      parts.unshift({ text: "Watch this video and suggest an optimized title, description, category/genre, and a curiosity-driven trailer hook, for a Bangla BTTH dubbing channel called TVR Dubbers." });
     }
   }
 
