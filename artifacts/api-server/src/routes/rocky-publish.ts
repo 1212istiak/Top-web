@@ -8,17 +8,15 @@ const router: IRouter = Router();
 const PUBLORA_BASE = "https://api.publora.com/api/v1";
 
 function publoraHeaders(): Record<string, string> {
-  const key = process.env.PUBLORA_API_KEY;
   return {
-    "x-publora-key": key || "",
+    "x-publora-key": process.env.PUBLORA_API_KEY || "",
     "Content-Type": "application/json",
   };
 }
 
 // GET /rocky/publora/connections — list connected social accounts
 router.get("/rocky/publora/connections", requireAdmin, async (_req, res): Promise<void> => {
-  const key = process.env.PUBLORA_API_KEY;
-  if (!key) {
+  if (!process.env.PUBLORA_API_KEY) {
     res.status(500).json({ error: "Publora isn't configured yet (missing API key on the server)." });
     return;
   }
@@ -36,28 +34,11 @@ router.get("/rocky/publora/connections", requireAdmin, async (_req, res): Promis
   }
 });
 
-// POST /rocky/publish — the full pipeline:
-// 1. Create the episode on the TVR Dubbers site
-// 2. (optional) Create a draft post on Publora, stream the video from videoFileUrl
-//    to Publora's presigned upload, then schedule it across chosen platforms
+// POST /rocky/publish — create the episode on the TVR Dubbers site only.
+// Video upload to Publora happens separately, directly from the browser
+// (see the three routes below) so large files never pass through this server.
 router.post("/rocky/publish", requireAdmin, async (req, res): Promise<void> => {
-  const {
-    // Episode fields (site)
-    title,
-    episodeNumber,
-    season,
-    genre,
-    thumbnailUrl,
-    primaryServerUrl, // embed URL (Dailymotion/Rumble/YouTube) — required
-    backupServerUrl,
-    isSpecial,
-    // Publora fields (optional — only if publishing to social too)
-    publishToSocial,
-    videoFileUrl, // direct downloadable video URL (e.g. Cloudinary) — required if publishToSocial
-    socialCaption,
-    platformIds, // e.g. ["youtube-xxx", "facebook-xxx", "telegram-xxx"]
-    scheduledTime, // ISO 8601 UTC — omit to post ASAP
-  } = req.body as {
+  const { title, episodeNumber, season, genre, thumbnailUrl, primaryServerUrl, backupServerUrl, isSpecial } = req.body as {
     title?: string;
     episodeNumber?: number;
     season?: number;
@@ -66,11 +47,6 @@ router.post("/rocky/publish", requireAdmin, async (req, res): Promise<void> => {
     primaryServerUrl?: string;
     backupServerUrl?: string;
     isSpecial?: boolean;
-    publishToSocial?: boolean;
-    videoFileUrl?: string;
-    socialCaption?: string;
-    platformIds?: string[];
-    scheduledTime?: string;
   };
 
   if (!title || !episodeNumber || !primaryServerUrl) {
@@ -78,9 +54,6 @@ router.post("/rocky/publish", requireAdmin, async (req, res): Promise<void> => {
     return;
   }
 
-  const result: any = { site: null, social: null };
-
-  // --- Step 1: Create the episode on the site ---
   try {
     const [episode] = await db.insert(episodesTable).values({
       title,
@@ -92,90 +65,107 @@ router.post("/rocky/publish", requireAdmin, async (req, res): Promise<void> => {
       backupServerUrl: backupServerUrl ?? null,
       isSpecial: isSpecial ?? false,
     }).returning();
-    result.site = { success: true, episodeId: episode.id };
+    res.json({ success: true, episodeId: episode.id });
   } catch (err) {
     logger.error({ err }, "Failed to create episode from Jerin publish");
-    res.status(500).json({ error: "Couldn't create the episode on your site.", result });
+    res.status(500).json({ error: "Couldn't create the episode on your site." });
+  }
+});
+
+// --- Publora social scheduling: 3-step flow, video uploads directly browser -> Publora ---
+
+// Step 1: create a draft post, get a postGroupId back
+router.post("/rocky/publora/create-draft", requireAdmin, async (req, res): Promise<void> => {
+  if (!process.env.PUBLORA_API_KEY) {
+    res.status(500).json({ error: "Publora isn't configured yet (missing API key on the server)." });
     return;
   }
-
-  // --- Step 2 (optional): Publish to social via Publora ---
-  if (publishToSocial) {
-    const key = process.env.PUBLORA_API_KEY;
-    if (!key) {
-      result.social = { success: false, error: "Publora isn't configured (missing API key on the server)." };
-      res.json(result);
-      return;
-    }
-    if (!videoFileUrl || !platformIds?.length) {
-      result.social = { success: false, error: "videoFileUrl and platformIds are required to publish to social." };
-      res.json(result);
-      return;
-    }
-
-    try {
-      // 2a. Create draft post (no scheduledTime yet — required so media can attach)
-      const createRes = await fetch(`${PUBLORA_BASE}/create-post`, {
-        method: "POST",
-        headers: publoraHeaders(),
-        body: JSON.stringify({
-          content: socialCaption || title,
-          platforms: platformIds,
-        }),
-      });
-      const createData: any = await createRes.json();
-      if (!createRes.ok) throw new Error(createData?.error || "create-post failed");
-      const postGroupId = createData.postGroupId;
-
-      // 2b. Get a pre-signed upload URL
-      const fileName = `${title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.mp4`;
-      const uploadUrlRes = await fetch(`${PUBLORA_BASE}/get-upload-url`, {
-        method: "POST",
-        headers: publoraHeaders(),
-        body: JSON.stringify({
-          postGroupId,
-          fileName,
-          contentType: "video/mp4",
-          type: "video",
-        }),
-      });
-      const uploadUrlData: any = await uploadUrlRes.json();
-      if (!uploadUrlRes.ok) throw new Error(uploadUrlData?.error || "get-upload-url failed");
-      const { uploadUrl } = uploadUrlData;
-
-      // 2c. Fetch the video from the source (e.g. Cloudinary) and stream it to Publora's S3 URL
-      // Streamed server-to-server — never passes through the browser.
-      const videoRes = await fetch(videoFileUrl);
-      if (!videoRes.ok || !videoRes.body) throw new Error("Couldn't fetch the video from videoFileUrl.");
-
-      const putRes = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": "video/mp4" },
-        duplex: "half",
-        body: videoRes.body,
-      } as any);
-      if (!putRes.ok) throw new Error(`Video upload to Publora failed (${putRes.status})`);
-
-      // 2d. Schedule (or publish immediately if no scheduledTime given)
-      const updateRes = await fetch(`${PUBLORA_BASE}/update-post/${postGroupId}`, {
-        method: "PUT",
-        headers: publoraHeaders(),
-        body: JSON.stringify({
-          status: "scheduled",
-          scheduledTime: scheduledTime || new Date(Date.now() + 60_000).toISOString(),
-        }),
-      });
-      const updateData: any = await updateRes.json();
-      if (!updateRes.ok) throw new Error(updateData?.error || "update-post failed");
-
-      result.social = { success: true, postGroupId, scheduledTime: scheduledTime || "ASAP" };
-    } catch (err: any) {
-      logger.error({ err }, "Publora publish pipeline failed");
-      result.social = { success: false, error: err.message || "Publora publishing failed." };
-    }
+  const { content, platformIds } = req.body as { content?: string; platformIds?: string[] };
+  if (!content || !platformIds?.length) {
+    res.status(400).json({ error: "content and platformIds are required." });
+    return;
   }
+  try {
+    const r = await fetch(`${PUBLORA_BASE}/create-post`, {
+      method: "POST",
+      headers: publoraHeaders(),
+      body: JSON.stringify({ content, platforms: platformIds }),
+    });
+    const data: any = await r.json();
+    if (!r.ok) {
+      res.status(502).json({ error: data?.error || "Publora create-post failed." });
+      return;
+    }
+    res.json({ postGroupId: data.postGroupId });
+  } catch (err) {
+    logger.error({ err }, "Publora create-draft failed");
+    res.status(500).json({ error: "Something went wrong creating the Publora draft." });
+  }
+});
 
-  res.json(result);
+// Step 2: get a presigned upload URL — the browser will PUT the video directly to this URL
+router.post("/rocky/publora/get-upload-url", requireAdmin, async (req, res): Promise<void> => {
+  if (!process.env.PUBLORA_API_KEY) {
+    res.status(500).json({ error: "Publora isn't configured yet (missing API key on the server)." });
+    return;
+  }
+  const { postGroupId, fileName, contentType } = req.body as {
+    postGroupId?: string;
+    fileName?: string;
+    contentType?: string;
+  };
+  if (!postGroupId || !fileName) {
+    res.status(400).json({ error: "postGroupId and fileName are required." });
+    return;
+  }
+  try {
+    const r = await fetch(`${PUBLORA_BASE}/get-upload-url`, {
+      method: "POST",
+      headers: publoraHeaders(),
+      body: JSON.stringify({ postGroupId, fileName, contentType: contentType || "video/mp4", type: "video" }),
+    });
+    const data: any = await r.json();
+    if (!r.ok) {
+      res.status(502).json({ error: data?.error || "Publora get-upload-url failed." });
+      return;
+    }
+    res.json(data); // { uploadUrl, fileUrl, mediaId, ... }
+  } catch (err) {
+    logger.error({ err }, "Publora get-upload-url failed");
+    res.status(500).json({ error: "Something went wrong getting the Publora upload URL." });
+  }
+});
+
+// Step 3: after the browser has PUT the video directly to the presigned URL, finalize/schedule the post
+router.post("/rocky/publora/finalize", requireAdmin, async (req, res): Promise<void> => {
+  if (!process.env.PUBLORA_API_KEY) {
+    res.status(500).json({ error: "Publora isn't configured yet (missing API key on the server)." });
+    return;
+  }
+  const { postGroupId, scheduledTime } = req.body as { postGroupId?: string; scheduledTime?: string };
+  if (!postGroupId) {
+    res.status(400).json({ error: "postGroupId is required." });
+    return;
+  }
+  try {
+    const r = await fetch(`${PUBLORA_BASE}/update-post/${postGroupId}`, {
+      method: "PUT",
+      headers: publoraHeaders(),
+      body: JSON.stringify({
+        status: "scheduled",
+        scheduledTime: scheduledTime || new Date(Date.now() + 60_000).toISOString(),
+      }),
+    });
+    const data: any = await r.json();
+    if (!r.ok) {
+      res.status(502).json({ error: data?.error || "Publora update-post failed." });
+      return;
+    }
+    res.json({ success: true, scheduledTime: scheduledTime || "ASAP" });
+  } catch (err) {
+    logger.error({ err }, "Publora finalize failed");
+    res.status(500).json({ error: "Something went wrong scheduling the Publora post." });
+  }
 });
 
 export default router;

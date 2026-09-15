@@ -407,6 +407,7 @@ function GrowthPanel({ model, thinking }: { model: GeminiModel; thinking: boolea
 
 // ---------------------------------------------------------------------------
 // PUBLISH PANEL — analyze a video by URL, then publish to site + Publora
+// (video uploads go browser -> Publora directly, never through our backend)
 // ---------------------------------------------------------------------------
 interface PlatformConnection {
   platformId: string;
@@ -415,10 +416,33 @@ interface PlatformConnection {
   profileImageUrl?: string;
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// PUT with upload progress via XHR (fetch doesn't expose upload progress)
+function uploadWithProgress(url: string, file: File, onProgress: (pct: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url, true);
+    xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error(`Upload failed (${xhr.status})`));
+    };
+    xhr.onerror = () => reject(new Error("Upload failed — network error"));
+    xhr.send(file);
+  });
+}
+
 function PublishPanel({ model, thinking }: { model: GeminiModel; thinking: boolean }) {
   const { toast } = useToast();
 
-  // Video source for Gemini's own analysis (public URL — YouTube or a direct file link)
+  // Video source for Gemini's own analysis (public URL — YouTube or any watchable link)
   const [analyzeVideoUrl, setAnalyzeVideoUrl] = useState("");
   const [analysisOutput, setAnalysisOutput] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -433,9 +457,10 @@ function PublishPanel({ model, thinking }: { model: GeminiModel; thinking: boole
   const [backupUrl, setBackupUrl] = useState("");
   const [isSpecial, setIsSpecial] = useState(false);
 
-  // Social (Publora)
+  // Social (Publora) — actual video FILE, uploaded directly browser -> Publora
   const [publishToSocial, setPublishToSocial] = useState(false);
-  const [videoFileUrl, setVideoFileUrl] = useState(""); // direct downloadable file (e.g. Cloudinary)
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [socialCaption, setSocialCaption] = useState("");
   const [connections, setConnections] = useState<PlatformConnection[] | null>(null);
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
@@ -443,6 +468,8 @@ function PublishPanel({ model, thinking }: { model: GeminiModel; thinking: boole
   const [loadingConnections, setLoadingConnections] = useState(false);
 
   const [isPublishing, setIsPublishing] = useState(false);
+  const [publishStage, setPublishStage] = useState("");
+  const [uploadPct, setUploadPct] = useState(0);
   const [publishResult, setPublishResult] = useState<any>(null);
 
   const loadConnections = async () => {
@@ -454,7 +481,7 @@ function PublishPanel({ model, thinking }: { model: GeminiModel; thinking: boole
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Couldn't load Publora connections");
-      setConnections(data.connections || data || []);
+      setConnections(data.connections || []);
     } catch (err: any) {
       toast({ title: "Publora error", description: err.message, variant: "destructive" });
     } finally {
@@ -487,26 +514,32 @@ function PublishPanel({ model, thinking }: { model: GeminiModel; thinking: boole
     setSelectedPlatforms((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
   };
 
+  const authHeaders = (): Record<string, string> => {
+    const token = localStorage.getItem("tvr_admin_token");
+    return { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  };
+
   const publish = async () => {
     if (!title.trim() || !episodeNumber || !embedUrl.trim()) {
       toast({ title: "Missing fields", description: "Title, episode number, and embed URL are required.", variant: "destructive" });
       return;
     }
-    if (publishToSocial && (!videoFileUrl.trim() || selectedPlatforms.length === 0)) {
-      toast({ title: "Missing social fields", description: "Video file URL and at least one platform are required to publish to social.", variant: "destructive" });
+    if (publishToSocial && (!videoFile || selectedPlatforms.length === 0)) {
+      toast({ title: "Missing social fields", description: "A video file and at least one platform are required to publish to social.", variant: "destructive" });
       return;
     }
 
     setIsPublishing(true);
+    setUploadPct(0);
     setPublishResult(null);
+    const result: any = { site: null, social: null };
+
     try {
-      const token = localStorage.getItem("tvr_admin_token");
-      const res = await fetch(`${API_BASE}/api/rocky/publish`, {
+      // Step 1: create episode on the site
+      setPublishStage("Creating episode on your site...");
+      const siteRes = await fetch(`${API_BASE}/api/rocky/publish`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: authHeaders(),
         body: JSON.stringify({
           title,
           episodeNumber: Number(episodeNumber),
@@ -516,21 +549,59 @@ function PublishPanel({ model, thinking }: { model: GeminiModel; thinking: boole
           primaryServerUrl: embedUrl,
           backupServerUrl: backupUrl || undefined,
           isSpecial,
-          publishToSocial,
-          videoFileUrl: publishToSocial ? videoFileUrl : undefined,
-          socialCaption: socialCaption || title,
-          platformIds: publishToSocial ? selectedPlatforms : undefined,
-          scheduledTime: scheduledTime ? new Date(scheduledTime).toISOString() : undefined,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Publish failed");
-      setPublishResult(data);
-      toast({ title: "Published!", description: "Episode is live on your site" + (publishToSocial ? " and scheduled on social." : ".") });
+      const siteData = await siteRes.json();
+      if (!siteRes.ok) throw new Error(siteData?.error || "Couldn't create the episode on your site.");
+      result.site = { success: true, episodeId: siteData.episodeId };
+
+      // Step 2: Publora, if enabled
+      if (publishToSocial && videoFile) {
+        setPublishStage("Creating Publora draft...");
+        const draftRes = await fetch(`${API_BASE}/api/rocky/publora/create-draft`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({ content: socialCaption || title, platformIds: selectedPlatforms }),
+        });
+        const draftData = await draftRes.json();
+        if (!draftRes.ok) throw new Error(draftData?.error || "Publora draft creation failed.");
+        const { postGroupId } = draftData;
+
+        setPublishStage("Requesting upload URL...");
+        const uploadUrlRes = await fetch(`${API_BASE}/api/rocky/publora/get-upload-url`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({ postGroupId, fileName: videoFile.name, contentType: videoFile.type || "video/mp4" }),
+        });
+        const uploadUrlData = await uploadUrlRes.json();
+        if (!uploadUrlRes.ok) throw new Error(uploadUrlData?.error || "Couldn't get a Publora upload URL.");
+
+        setPublishStage(`Uploading video (${formatBytes(videoFile.size)}) directly to Publora...`);
+        await uploadWithProgress(uploadUrlData.uploadUrl, videoFile, setUploadPct);
+
+        setPublishStage("Scheduling post...");
+        const finalizeRes = await fetch(`${API_BASE}/api/rocky/publora/finalize`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({
+            postGroupId,
+            scheduledTime: scheduledTime ? new Date(scheduledTime).toISOString() : undefined,
+          }),
+        });
+        const finalizeData = await finalizeRes.json();
+        if (!finalizeRes.ok) throw new Error(finalizeData?.error || "Publora scheduling failed.");
+        result.social = { success: true, scheduledTime: finalizeData.scheduledTime };
+      }
+
+      setPublishResult(result);
+      toast({ title: "Published!", description: "Episode is live on your site" + (result.social ? " and scheduled on social." : ".") });
     } catch (err: any) {
+      result.social = publishToSocial ? { success: false, error: err.message } : null;
+      setPublishResult(result);
       toast({ title: "Publish error", description: err.message, variant: "destructive" });
     } finally {
       setIsPublishing(false);
+      setPublishStage("");
     }
   };
 
@@ -584,7 +655,29 @@ function PublishPanel({ model, thinking }: { model: GeminiModel; thinking: boole
 
         {publishToSocial && (
           <div className="space-y-3 pl-1">
-            <input value={videoFileUrl} onChange={(e) => setVideoFileUrl(e.target.value)} placeholder="Direct video file URL (Cloudinary) *" className="w-full rounded-md border border-border bg-black/20 px-3 py-2 text-sm" />
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="video/*"
+                className="hidden"
+                onChange={(e) => setVideoFile(e.target.files?.[0] || null)}
+              />
+              {videoFile ? (
+                <div className="flex items-center justify-between rounded-md border border-border bg-black/20 px-3 py-2 text-sm">
+                  <span className="truncate">{videoFile.name} · {formatBytes(videoFile.size)}</span>
+                  <button onClick={() => { setVideoFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }} className="text-red-400 ml-2 shrink-0">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <Button type="button" variant="outline" className="w-full" onClick={() => fileInputRef.current?.click()}>
+                  <ImagePlus className="h-4 w-4 mr-2" /> Select video file *
+                </Button>
+              )}
+              <p className="text-[11px] text-muted-foreground mt-1">Uploads directly from your browser to Publora — never passes through this server, so large files are fine.</p>
+            </div>
+
             <Textarea value={socialCaption} onChange={(e) => setSocialCaption(e.target.value)} placeholder="Social caption (defaults to title if left blank)" className="min-h-[70px]" />
 
             <div>
@@ -612,6 +705,7 @@ function PublishPanel({ model, thinking }: { model: GeminiModel; thinking: boole
                       }`}
                     >
                       {c.displayName || c.username || c.platformId.split("-")[0]}
+                      <span className="opacity-50 ml-1">({c.platformId.split("-")[0]})</span>
                     </button>
                   ))}
                 </div>
@@ -631,11 +725,23 @@ function PublishPanel({ model, thinking }: { model: GeminiModel; thinking: boole
         )}
       </div>
 
-      {/* Publish button */}
-      <Button onClick={publish} disabled={isPublishing} className="w-full bg-cyan-600 hover:bg-cyan-500 text-white text-base py-6">
-        {isPublishing ? <Loader2 className="h-5 w-5 mr-2 animate-spin" /> : "🚀"}
-        {isPublishing ? "Publishing..." : "Publish Episode"}
-      </Button>
+      {/* Publish button + progress */}
+      <div className="space-y-2">
+        <Button onClick={publish} disabled={isPublishing} className="w-full bg-cyan-600 hover:bg-cyan-500 text-white text-base py-6">
+          {isPublishing ? <Loader2 className="h-5 w-5 mr-2 animate-spin" /> : "🚀"}
+          {isPublishing ? "Publishing..." : "Publish Episode"}
+        </Button>
+        {isPublishing && (
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground text-center">{publishStage}</p>
+            {uploadPct > 0 && (
+              <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                <div className="h-full bg-cyan-500 transition-all" style={{ width: `${uploadPct}%` }} />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {publishResult && (
         <div className="border border-border rounded-lg bg-black/20 p-4 text-sm space-y-1">
