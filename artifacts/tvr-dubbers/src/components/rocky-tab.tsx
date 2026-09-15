@@ -463,6 +463,7 @@ function PublishPanel({ model, thinking }: { model: GeminiModel; thinking: boole
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [socialCaption, setSocialCaption] = useState("");
+  const [youtubeVisibility, setYoutubeVisibility] = useState<"public" | "unlisted" | "private">("unlisted");
   const [connections, setConnections] = useState<PlatformConnection[] | null>(null);
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [scheduledTime, setScheduledTime] = useState("");
@@ -571,7 +572,7 @@ function PublishPanel({ model, thinking }: { model: GeminiModel; thinking: boole
         const draftRes = await fetch(`${API_BASE}/api/rocky/publora/create-draft`, {
           method: "POST",
           headers: authHeaders(),
-          body: JSON.stringify({ content: socialCaption || title || "New episode", platformIds: selectedPlatforms }),
+          body: JSON.stringify({ content: socialCaption || title || "New episode", platformIds: selectedPlatforms, youtubeVisibility }),
         });
         const draftData = await draftRes.json();
         if (!draftRes.ok) throw new Error(draftData?.error || "Publora draft creation failed.");
@@ -735,6 +736,29 @@ function PublishPanel({ model, thinking }: { model: GeminiModel; thinking: boole
                 </div>
               )}
             </div>
+
+            {selectedPlatforms.some((p) => p.startsWith("youtube")) && (
+              <div>
+                <span className="text-xs text-muted-foreground block mb-1">YouTube visibility</span>
+                <div className="flex gap-1.5">
+                  {(["public", "unlisted", "private"] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setYoutubeVisibility(v)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize transition-all ${
+                        youtubeVisibility === v
+                          ? "bg-cyan-500 text-black"
+                          : "bg-white/5 text-muted-foreground hover:bg-white/10"
+                      }`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1">Publora defaults new YouTube uploads to public if not set — Jerin defaults to unlisted here instead, so nothing goes public by accident.</p>
+              </div>
+            )}
 
             <div>
               <span className="text-xs text-muted-foreground block mb-1">Schedule time (leave blank to post ASAP)</span>

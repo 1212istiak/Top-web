@@ -80,16 +80,24 @@ router.post("/rocky/publora/create-draft", requireAdmin, async (req, res): Promi
     res.status(500).json({ error: "Publora isn't configured yet (missing API key on the server)." });
     return;
   }
-  const { content, platformIds } = req.body as { content?: string; platformIds?: string[] };
+  const { content, platformIds, youtubeVisibility } = req.body as {
+    content?: string;
+    platformIds?: string[];
+    youtubeVisibility?: "public" | "unlisted" | "private";
+  };
   if (!content || !platformIds?.length) {
     res.status(400).json({ error: "content and platformIds are required." });
     return;
   }
   try {
+    const platformSettings: any = {};
+    if (platformIds.some((p) => p.startsWith("youtube"))) {
+      platformSettings.youtube = { privacy: youtubeVisibility || "unlisted" };
+    }
     const r = await fetch(`${PUBLORA_BASE}/create-post`, {
       method: "POST",
       headers: publoraHeaders(),
-      body: JSON.stringify({ content, platforms: platformIds }),
+      body: JSON.stringify({ content, platforms: platformIds, platformSettings }),
     });
     const data: any = await r.json();
     if (!r.ok) {
