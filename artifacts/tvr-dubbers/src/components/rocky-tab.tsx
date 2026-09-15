@@ -236,11 +236,21 @@ interface ChatMessage {
   pendingAction?: { name: string; args: any };
   actionStatus?: "pending" | "confirmed" | "cancelled" | "failed";
   actionResult?: string;
+  imageResult?: string; // data URL for a generated thumbnail
 }
 
 function ACTION_LABELS(name: string, args: any): string {
   if (name === "create_episode") {
     return `Create episode #${args.episodeNumber}: "${args.title}"${args.genre ? ` (${args.genre})` : ""}`;
+  }
+  if (name === "analyze_video") {
+    return `Watch video: ${args.videoUrl}`;
+  }
+  if (name === "generate_thumbnail") {
+    return `Generate thumbnail: "${args.prompt}"`;
+  }
+  if (name === "schedule_social_post") {
+    return `Schedule post on ${args.platformIds?.length || 0} platform(s): "${args.content}"`;
   }
   return name;
 }
@@ -291,8 +301,19 @@ function VoiceChatPanel({ model, thinking }: { model: GeminiModel; thinking: boo
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Action failed");
-      const resultText = msg.pendingAction.name === "create_episode" ? `Episode #${data.episodeId} is live.` : "Done.";
-      setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionResult: `✅ ${resultText}` } : x)));
+
+      if (msg.pendingAction.name === "create_episode") {
+        setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionResult: `✅ Episode #${data.episodeId} is live.` } : x)));
+      } else if (msg.pendingAction.name === "analyze_video") {
+        setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionResult: `✅ ${data.text}` } : x)));
+      } else if (msg.pendingAction.name === "generate_thumbnail") {
+        const dataUrl = `data:${data.imageMimeType};base64,${data.imageBase64}`;
+        setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionResult: "✅ Thumbnail generated — right-click/hold to save, or upload it to Cloudinary to get a URL for the episode form.", imageResult: dataUrl } : x)));
+      } else if (msg.pendingAction.name === "schedule_social_post") {
+        setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionResult: `✅ Scheduled (${data.scheduledTime}).` } : x)));
+      } else {
+        setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionResult: "✅ Done." } : x)));
+      }
     } catch (err: any) {
       setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionStatus: "failed", actionResult: `❌ ${err.message}` } : x)));
     }
@@ -359,6 +380,12 @@ function VoiceChatPanel({ model, thinking }: { model: GeminiModel; thinking: boo
                   )}
                   {m.actionStatus === "cancelled" && <p className="text-xs text-muted-foreground">Cancelled.</p>}
                   {m.actionResult && <p className="text-xs">{m.actionResult}</p>}
+                  {m.imageResult && (
+                    <div className="mt-2">
+                      <img src={m.imageResult} alt="Generated thumbnail" className="rounded-md border border-border max-w-full" />
+                      <a href={m.imageResult} download="thumbnail.png" className="text-xs text-cyan-400 underline mt-1 inline-block">Download</a>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

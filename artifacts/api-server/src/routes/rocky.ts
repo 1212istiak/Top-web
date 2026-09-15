@@ -22,7 +22,7 @@ const VOICE_NOTE =
   " Keep responses concise and avoid heavy markdown symbols like **, *, #, or backticks since this reply may be read aloud.";
 
 const ACTION_NOTE =
-  " If the user explicitly asks you to publish, create, or add a new episode to the website (and gives you the necessary details like title, episode number, and embed URL), call the create_episode function instead of just describing what you would do. If they're missing required details, ask for them in plain text first rather than guessing or calling the function with incomplete info. Only call the function when you have enough real information — never invent placeholder values.";
+  " You can take real actions, not just describe them, by calling functions: create_episode (publish a new episode to the website), analyze_video (watch a YouTube/video URL and report back what you see/hear), generate_thumbnail (create an actual thumbnail image from a text description), and schedule_social_post (draft a social post — note: the actual video file must still be attached by the user in the Publish tab, since you can't access their phone's files; use this only for text-only posts like announcements, or to prepare a draft the user will attach media to). Only call a function when you have enough real information for it — ask for missing details in plain text first rather than guessing or inventing placeholder values.";
 
 const SYSTEM_PROMPTS: Record<string, string> = {
   chat:
@@ -60,6 +60,42 @@ const TOOLS = [
             isSpecial: { type: "boolean", description: "Whether this is a special episode" },
           },
           required: ["title", "episodeNumber", "primaryServerUrl"],
+        },
+      },
+      {
+        name: "analyze_video",
+        description: "Watch a public video URL (YouTube or a direct video file link) and report what's in it — used to inform title/description/thumbnail suggestions.",
+        parameters: {
+          type: "object",
+          properties: {
+            videoUrl: { type: "string", description: "Public URL of the video to watch" },
+            question: { type: "string", description: "What to look for or answer about the video" },
+          },
+          required: ["videoUrl"],
+        },
+      },
+      {
+        name: "generate_thumbnail",
+        description: "Generate an actual thumbnail image from a text description, for a BTTH dubbing episode.",
+        parameters: {
+          type: "object",
+          properties: {
+            prompt: { type: "string", description: "Detailed visual description of the thumbnail to generate" },
+          },
+          required: ["prompt"],
+        },
+      },
+      {
+        name: "schedule_social_post",
+        description: "Draft and schedule a text-only social post (announcement, hype post, etc.) across connected Publora platforms. Does NOT attach video — for posts with video, tell the user to use the Publish tab's file picker instead.",
+        parameters: {
+          type: "object",
+          properties: {
+            content: { type: "string", description: "The post caption/content" },
+            platformIds: { type: "array", items: { type: "string" }, description: "Publora platform IDs to post to" },
+            scheduledTime: { type: "string", description: "ISO 8601 datetime to schedule for, omit for ASAP" },
+          },
+          required: ["content", "platformIds"],
         },
       },
     ],
@@ -206,6 +242,113 @@ router.post("/rocky/execute-action", requireAdmin, async (req, res): Promise<voi
     } catch (err) {
       logger.error({ err }, "Failed to create episode via chat action");
       res.status(500).json({ error: "Couldn't create the episode on your site." });
+    }
+    return;
+  }
+
+  if (action === "analyze_video") {
+    const { videoUrl, question } = args || {};
+    if (!videoUrl) {
+      res.status(400).json({ error: "videoUrl is required." });
+      return;
+    }
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      res.status(500).json({ error: "Jerin isn't configured yet (missing API key)." });
+      return;
+    }
+    try {
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent`;
+      const r = await fetch(`${geminiUrl}?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            role: "user",
+            parts: [
+              { text: question || "Watch this video and suggest an optimized title, description, category/genre, and a curiosity-driven trailer hook for a Bangla BTTH dubbing channel." },
+              { file_data: { file_uri: videoUrl } },
+            ],
+          }],
+        }),
+      });
+      const data: any = await r.json();
+      if (!r.ok) throw new Error(data?.error?.message || "Video analysis failed.");
+      const text = data?.candidates?.[0]?.content?.parts?.filter((p: any) => p.text).map((p: any) => p.text).join("") || "No analysis returned.";
+      res.json({ success: true, text });
+    } catch (err: any) {
+      logger.error({ err }, "analyze_video action failed");
+      res.status(500).json({ error: err.message || "Video analysis failed." });
+    }
+    return;
+  }
+
+  if (action === "generate_thumbnail") {
+    const { prompt } = args || {};
+    if (!prompt) {
+      res.status(400).json({ error: "prompt is required." });
+      return;
+    }
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      res.status(500).json({ error: "Jerin isn't configured yet (missing API key)." });
+      return;
+    }
+    try {
+      const imgUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent`;
+      const r = await fetch(`${imgUrl}?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] }),
+      });
+      const data: any = await r.json();
+      if (!r.ok) throw new Error(data?.error?.message || "Thumbnail generation failed.");
+      const imagePart = data?.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
+      if (!imagePart) throw new Error("No image was returned.");
+      res.json({
+        success: true,
+        imageBase64: imagePart.inlineData.data,
+        imageMimeType: imagePart.inlineData.mimeType || "image/png",
+      });
+    } catch (err: any) {
+      logger.error({ err }, "generate_thumbnail action failed");
+      res.status(500).json({ error: err.message || "Thumbnail generation failed." });
+    }
+    return;
+  }
+
+  if (action === "schedule_social_post") {
+    const { content, platformIds, scheduledTime } = args || {};
+    if (!content || !platformIds?.length) {
+      res.status(400).json({ error: "content and platformIds are required." });
+      return;
+    }
+    const publoraKey = process.env.PUBLORA_API_KEY;
+    if (!publoraKey) {
+      res.status(500).json({ error: "Publora isn't configured yet (missing API key)." });
+      return;
+    }
+    const publoraHeaders = { "x-publora-key": publoraKey, "Content-Type": "application/json" };
+    try {
+      const createRes = await fetch("https://api.publora.com/api/v1/create-post", {
+        method: "POST",
+        headers: publoraHeaders,
+        body: JSON.stringify({ content, platforms: platformIds }),
+      });
+      const createData: any = await createRes.json();
+      if (!createRes.ok) throw new Error(createData?.error || "Publora post creation failed — this platform may require attached media, which chat can't provide. Use the Publish tab for video posts.");
+
+      const updateRes = await fetch(`https://api.publora.com/api/v1/update-post/${createData.postGroupId}`, {
+        method: "PUT",
+        headers: publoraHeaders,
+        body: JSON.stringify({ status: "scheduled", scheduledTime: scheduledTime || new Date(Date.now() + 60_000).toISOString() }),
+      });
+      const updateData: any = await updateRes.json();
+      if (!updateRes.ok) throw new Error(updateData?.error || "Publora scheduling failed.");
+      res.json({ success: true, scheduledTime: scheduledTime || "ASAP" });
+    } catch (err: any) {
+      logger.error({ err }, "schedule_social_post action failed");
+      res.status(500).json({ error: err.message || "Publora scheduling failed." });
     }
     return;
   }
