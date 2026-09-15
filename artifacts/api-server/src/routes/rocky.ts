@@ -76,13 +76,13 @@ const TOOLS = [
       },
       {
         name: "generate_thumbnail",
-        description: "Generate an actual thumbnail image from a text description, for a BTTH dubbing episode.",
+        description: "Write a detailed thumbnail design description (colors, composition, characters, text overlay, mood) for a BTTH dubbing episode. This produces a text prompt/spec, not an actual image file — image generation requires paid billing on Gemini's API, so this stays text-only to keep everything free.",
         parameters: {
           type: "object",
           properties: {
-            prompt: { type: "string", description: "Detailed visual description of the thumbnail to generate" },
+            episodeContext: { type: "string", description: "What the episode/scene is about, to base the thumbnail concept on" },
           },
-          required: ["prompt"],
+          required: ["episodeContext"],
         },
       },
       {
@@ -284,9 +284,9 @@ router.post("/rocky/execute-action", requireAdmin, async (req, res): Promise<voi
   }
 
   if (action === "generate_thumbnail") {
-    const { prompt } = args || {};
-    if (!prompt) {
-      res.status(400).json({ error: "prompt is required." });
+    const { episodeContext } = args || {};
+    if (!episodeContext) {
+      res.status(400).json({ error: "episodeContext is required." });
       return;
     }
     const apiKey = process.env.GEMINI_API_KEY;
@@ -295,24 +295,26 @@ router.post("/rocky/execute-action", requireAdmin, async (req, res): Promise<voi
       return;
     }
     try {
-      const imgUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent`;
-      const r = await fetch(`${imgUrl}?key=${apiKey}`, {
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent`;
+      const r = await fetch(`${geminiUrl}?key=${apiKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] }),
+        body: JSON.stringify({
+          contents: [{
+            role: "user",
+            parts: [{
+              text: `Write a detailed thumbnail design spec for a Bangla BTTH dubbing YouTube/Facebook thumbnail, based on: ${episodeContext}. Include: composition/layout, key characters and their pose/expression, color palette and lighting mood, any text overlay wording (in Bangla or English, whichever hits harder), and overall vibe. This is a design brief the user (or a designer) will use to actually create the image — not the image itself.`,
+            }],
+          }],
+        }),
       });
       const data: any = await r.json();
-      if (!r.ok) throw new Error(data?.error?.message || "Thumbnail generation failed.");
-      const imagePart = data?.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
-      if (!imagePart) throw new Error("No image was returned.");
-      res.json({
-        success: true,
-        imageBase64: imagePart.inlineData.data,
-        imageMimeType: imagePart.inlineData.mimeType || "image/png",
-      });
+      if (!r.ok) throw new Error(data?.error?.message || "Thumbnail spec generation failed.");
+      const text = data?.candidates?.[0]?.content?.parts?.filter((p: any) => p.text).map((p: any) => p.text).join("") || "No spec returned.";
+      res.json({ success: true, text });
     } catch (err: any) {
       logger.error({ err }, "generate_thumbnail action failed");
-      res.status(500).json({ error: err.message || "Thumbnail generation failed." });
+      res.status(500).json({ error: err.message || "Thumbnail spec generation failed." });
     }
     return;
   }

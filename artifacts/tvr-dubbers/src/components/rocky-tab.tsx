@@ -247,7 +247,7 @@ function ACTION_LABELS(name: string, args: any): string {
     return `Watch video: ${args.videoUrl}`;
   }
   if (name === "generate_thumbnail") {
-    return `Generate thumbnail: "${args.prompt}"`;
+    return `Write thumbnail design spec for: "${args.episodeContext}"`;
   }
   if (name === "schedule_social_post") {
     return `Schedule post on ${args.platformIds?.length || 0} platform(s): "${args.content}"`;
@@ -307,8 +307,7 @@ function VoiceChatPanel({ model, thinking }: { model: GeminiModel; thinking: boo
       } else if (msg.pendingAction.name === "analyze_video") {
         setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionResult: `✅ ${data.text}` } : x)));
       } else if (msg.pendingAction.name === "generate_thumbnail") {
-        const dataUrl = `data:${data.imageMimeType};base64,${data.imageBase64}`;
-        setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionResult: "✅ Thumbnail generated — right-click/hold to save, or upload it to Cloudinary to get a URL for the episode form.", imageResult: dataUrl } : x)));
+        setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionResult: `✅ ${data.text}` } : x)));
       } else if (msg.pendingAction.name === "schedule_social_post") {
         setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionResult: `✅ Scheduled (${data.scheduledTime}).` } : x)));
       } else {
