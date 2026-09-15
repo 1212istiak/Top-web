@@ -409,9 +409,10 @@ function GrowthPanel({ model, thinking }: { model: GeminiModel; thinking: boolea
 // PUBLISH PANEL — analyze a video by URL, then publish to site + Publora
 // ---------------------------------------------------------------------------
 interface PlatformConnection {
-  id: string;
-  platform: string;
-  displayName?: string;
+  platformId: string;
+  username?: string;
+  displayName?: string; // only present for X/Bluesky/Mastodon per Publora docs
+  profileImageUrl?: string;
 }
 
 function PublishPanel({ model, thinking }: { model: GeminiModel; thinking: boolean }) {
@@ -601,16 +602,16 @@ function PublishPanel({ model, thinking }: { model: GeminiModel; thinking: boole
                 <div className="flex flex-wrap gap-2">
                   {connections.map((c) => (
                     <button
-                      key={c.id}
+                      key={c.platformId}
                       type="button"
-                      onClick={() => togglePlatform(c.id)}
+                      onClick={() => togglePlatform(c.platformId)}
                       className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
-                        selectedPlatforms.includes(c.id)
+                        selectedPlatforms.includes(c.platformId)
                           ? "bg-cyan-500 text-black"
                           : "bg-white/5 text-muted-foreground hover:bg-white/10"
                       }`}
                     >
-                      {c.displayName || c.platform || c.id}
+                      {c.displayName || c.username || c.platformId.split("-")[0]}
                     </button>
                   ))}
                 </div>
