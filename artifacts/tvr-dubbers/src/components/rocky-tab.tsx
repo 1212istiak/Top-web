@@ -448,6 +448,7 @@ function PublishPanel({ model, thinking }: { model: GeminiModel; thinking: boole
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // Episode fields (site)
+  const [publishToSite, setPublishToSite] = useState(true);
   const [title, setTitle] = useState("");
   const [episodeNumber, setEpisodeNumber] = useState("");
   const [season, setSeason] = useState("1");
@@ -520,8 +521,12 @@ function PublishPanel({ model, thinking }: { model: GeminiModel; thinking: boole
   };
 
   const publish = async () => {
-    if (!title.trim() || !episodeNumber || !embedUrl.trim()) {
-      toast({ title: "Missing fields", description: "Title, episode number, and embed URL are required.", variant: "destructive" });
+    if (!publishToSite && !publishToSocial) {
+      toast({ title: "Nothing to publish", description: "Enable at least one of website or social publishing.", variant: "destructive" });
+      return;
+    }
+    if (publishToSite && (!title.trim() || !episodeNumber || !embedUrl.trim())) {
+      toast({ title: "Missing website fields", description: "Title, episode number, and embed URL are required to publish to your site.", variant: "destructive" });
       return;
     }
     if (publishToSocial && (!videoFile || selectedPlatforms.length === 0)) {
@@ -535,33 +540,38 @@ function PublishPanel({ model, thinking }: { model: GeminiModel; thinking: boole
     const result: any = { site: null, social: null };
 
     try {
-      // Step 1: create episode on the site
-      setPublishStage("Creating episode on your site...");
-      const siteRes = await fetch(`${API_BASE}/api/rocky/publish`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({
-          title,
-          episodeNumber: Number(episodeNumber),
-          season: Number(season) || 1,
-          genre: genre || undefined,
-          thumbnailUrl: thumbnailUrl || undefined,
-          primaryServerUrl: embedUrl,
-          backupServerUrl: backupUrl || undefined,
-          isSpecial,
-        }),
-      });
-      const siteData = await siteRes.json();
-      if (!siteRes.ok) throw new Error(siteData?.error || "Couldn't create the episode on your site.");
-      result.site = { success: true, episodeId: siteData.episodeId };
+      // Step 1: create episode on the site (only if enabled)
+      if (publishToSite) {
+        setPublishStage("Creating episode on your site...");
+        const siteRes = await fetch(`${API_BASE}/api/rocky/publish`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({
+            title,
+            episodeNumber: Number(episodeNumber),
+            season: Number(season) || 1,
+            genre: genre || undefined,
+            thumbnailUrl: thumbnailUrl || undefined,
+            primaryServerUrl: embedUrl,
+            backupServerUrl: backupUrl || undefined,
+            isSpecial,
+          }),
+        });
+        const siteData = await siteRes.json();
+        if (!siteRes.ok) {
+          result.site = { success: false, error: siteData?.error || "Couldn't create the episode on your site." };
+        } else {
+          result.site = { success: true, episodeId: siteData.episodeId };
+        }
+      }
 
-      // Step 2: Publora, if enabled
+      // Step 2: Publora, if enabled — runs independently of the site step above
       if (publishToSocial && videoFile) {
         setPublishStage("Creating Publora draft...");
         const draftRes = await fetch(`${API_BASE}/api/rocky/publora/create-draft`, {
           method: "POST",
           headers: authHeaders(),
-          body: JSON.stringify({ content: socialCaption || title, platformIds: selectedPlatforms }),
+          body: JSON.stringify({ content: socialCaption || title || "New episode", platformIds: selectedPlatforms }),
         });
         const draftData = await draftRes.json();
         if (!draftRes.ok) throw new Error(draftData?.error || "Publora draft creation failed.");
@@ -594,7 +604,14 @@ function PublishPanel({ model, thinking }: { model: GeminiModel; thinking: boole
       }
 
       setPublishResult(result);
-      toast({ title: "Published!", description: "Episode is live on your site" + (result.social ? " and scheduled on social." : ".") });
+      const parts = [];
+      if (result.site?.success) parts.push("live on your site");
+      if (result.social?.success) parts.push("scheduled on social");
+      toast({
+        title: parts.length ? "Published!" : "Publish had issues",
+        description: parts.length ? parts.join(" and ") + "." : "Check the results below.",
+        variant: parts.length ? undefined : "destructive",
+      });
     } catch (err: any) {
       result.social = publishToSocial ? { success: false, error: err.message } : null;
       setPublishResult(result);
@@ -630,20 +647,27 @@ function PublishPanel({ model, thinking }: { model: GeminiModel; thinking: boole
 
       {/* Step 2: Episode details */}
       <div className="space-y-3 p-4 rounded-lg border border-border bg-black/10">
-        <h3 className="text-sm font-semibold text-cyan-400">2. Episode details (for your site)</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title *" className="rounded-md border border-border bg-black/20 px-3 py-2 text-sm" />
-          <input value={genre} onChange={(e) => setGenre(e.target.value)} placeholder="Genre" className="rounded-md border border-border bg-black/20 px-3 py-2 text-sm" />
-          <input value={episodeNumber} onChange={(e) => setEpisodeNumber(e.target.value)} type="number" placeholder="Episode number *" className="rounded-md border border-border bg-black/20 px-3 py-2 text-sm" />
-          <input value={season} onChange={(e) => setSeason(e.target.value)} type="number" placeholder="Season" className="rounded-md border border-border bg-black/20 px-3 py-2 text-sm" />
-        </div>
-        <input value={embedUrl} onChange={(e) => setEmbedUrl(e.target.value)} placeholder="Embed URL (Dailymotion/Rumble/YouTube) *" className="w-full rounded-md border border-border bg-black/20 px-3 py-2 text-sm" />
-        <input value={backupUrl} onChange={(e) => setBackupUrl(e.target.value)} placeholder="Backup embed URL (optional)" className="w-full rounded-md border border-border bg-black/20 px-3 py-2 text-sm" />
-        <input value={thumbnailUrl} onChange={(e) => setThumbnailUrl(e.target.value)} placeholder="Thumbnail URL (optional, e.g. Cloudinary)" className="w-full rounded-md border border-border bg-black/20 px-3 py-2 text-sm" />
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          <input type="checkbox" checked={isSpecial} onChange={(e) => setIsSpecial(e.target.checked)} />
-          Special episode
+        <label className="flex items-center gap-2 text-sm font-semibold text-cyan-400">
+          <input type="checkbox" checked={publishToSite} onChange={(e) => setPublishToSite(e.target.checked)} />
+          2. Publish to your website
         </label>
+        {publishToSite && (
+          <div className="space-y-3 pl-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title *" className="rounded-md border border-border bg-black/20 px-3 py-2 text-sm" />
+              <input value={genre} onChange={(e) => setGenre(e.target.value)} placeholder="Genre" className="rounded-md border border-border bg-black/20 px-3 py-2 text-sm" />
+              <input value={episodeNumber} onChange={(e) => setEpisodeNumber(e.target.value)} type="number" placeholder="Episode number *" className="rounded-md border border-border bg-black/20 px-3 py-2 text-sm" />
+              <input value={season} onChange={(e) => setSeason(e.target.value)} type="number" placeholder="Season" className="rounded-md border border-border bg-black/20 px-3 py-2 text-sm" />
+            </div>
+            <input value={embedUrl} onChange={(e) => setEmbedUrl(e.target.value)} placeholder="Embed URL (Dailymotion/Rumble/YouTube) *" className="w-full rounded-md border border-border bg-black/20 px-3 py-2 text-sm" />
+            <input value={backupUrl} onChange={(e) => setBackupUrl(e.target.value)} placeholder="Backup embed URL (optional)" className="w-full rounded-md border border-border bg-black/20 px-3 py-2 text-sm" />
+            <input value={thumbnailUrl} onChange={(e) => setThumbnailUrl(e.target.value)} placeholder="Thumbnail URL (optional, e.g. Cloudinary)" className="w-full rounded-md border border-border bg-black/20 px-3 py-2 text-sm" />
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <input type="checkbox" checked={isSpecial} onChange={(e) => setIsSpecial(e.target.checked)} />
+              Special episode
+            </label>
+          </div>
+        )}
       </div>
 
       {/* Step 3: Social publishing */}
@@ -745,9 +769,11 @@ function PublishPanel({ model, thinking }: { model: GeminiModel; thinking: boole
 
       {publishResult && (
         <div className="border border-border rounded-lg bg-black/20 p-4 text-sm space-y-1">
-          <p className={publishResult.site?.success ? "text-green-400" : "text-red-400"}>
-            Site: {publishResult.site?.success ? `✅ Episode #${publishResult.site.episodeId} created` : "❌ Failed"}
-          </p>
+          {publishResult.site && (
+            <p className={publishResult.site.success ? "text-green-400" : "text-red-400"}>
+              Site: {publishResult.site.success ? `✅ Episode #${publishResult.site.episodeId} created` : `❌ ${publishResult.site.error}`}
+            </p>
+          )}
           {publishResult.social && (
             <p className={publishResult.social.success ? "text-green-400" : "text-red-400"}>
               Social: {publishResult.social.success ? `✅ Scheduled (${publishResult.social.scheduledTime})` : `❌ ${publishResult.social.error}`}
