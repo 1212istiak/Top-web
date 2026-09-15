@@ -24,14 +24,19 @@ const LS_THINKING = "jerin_thinking";
 // ---------------------------------------------------------------------------
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
-async function askRocky(
+interface RockyResponse {
+  text: string;
+  functionCall?: { name: string; args: any };
+}
+
+async function askRockyFull(
   mode: string,
   message: string,
   model: GeminiModel,
   thinking: boolean,
   image?: { base64: string; mimeType: string },
   videoUrl?: string
-): Promise<string> {
+): Promise<RockyResponse> {
   const token = localStorage.getItem("tvr_admin_token");
   const res = await fetch(`${API_BASE}/api/rocky/generate`, {
     method: "POST",
@@ -50,7 +55,20 @@ async function askRocky(
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error || "Jerin failed to respond");
-  return data.text as string;
+  return { text: data.text as string, functionCall: data.functionCall };
+}
+
+// Text-only convenience wrapper for panels that don't need function calls
+async function askRocky(
+  mode: string,
+  message: string,
+  model: GeminiModel,
+  thinking: boolean,
+  image?: { base64: string; mimeType: string },
+  videoUrl?: string
+): Promise<string> {
+  const res = await askRockyFull(mode, message, model, thinking, image, videoUrl);
+  return res.text;
 }
 
 function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }> {
@@ -212,8 +230,23 @@ export function RockyTab() {
 // ---------------------------------------------------------------------------
 // VOICE CHAT PANEL
 // ---------------------------------------------------------------------------
+interface ChatMessage {
+  role: "user" | "rocky" | "action";
+  text: string;
+  pendingAction?: { name: string; args: any };
+  actionStatus?: "pending" | "confirmed" | "cancelled" | "failed";
+  actionResult?: string;
+}
+
+function ACTION_LABELS(name: string, args: any): string {
+  if (name === "create_episode") {
+    return `Create episode #${args.episodeNumber}: "${args.title}"${args.genre ? ` (${args.genre})` : ""}`;
+  }
+  return name;
+}
+
 function VoiceChatPanel({ model, thinking }: { model: GeminiModel; thinking: boolean }) {
-  const [messages, setMessages] = useState<{ role: "user" | "rocky"; text: string }[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -227,14 +260,46 @@ function VoiceChatPanel({ model, thinking }: { model: GeminiModel; thinking: boo
     setInput("");
     setIsLoading(true);
     try {
-      const reply = await askRocky("chat", text, model, thinking);
-      setMessages((m) => [...m, { role: "rocky", text: reply }]);
-      speak(reply, muted);
+      const reply = await askRockyFull("chat", text, model, thinking);
+      setMessages((m) => [
+        ...m,
+        {
+          role: "rocky",
+          text: reply.text,
+          pendingAction: reply.functionCall,
+          actionStatus: reply.functionCall ? "pending" : undefined,
+        },
+      ]);
+      speak(reply.text, muted);
     } catch (err: any) {
       toast({ title: "Jerin error", description: err.message, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const runAction = async (index: number) => {
+    const msg = messages[index];
+    if (!msg.pendingAction) return;
+    setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionStatus: "confirmed" } : x)));
+    try {
+      const token = localStorage.getItem("tvr_admin_token");
+      const res = await fetch(`${API_BASE}/api/rocky/execute-action`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ action: msg.pendingAction.name, args: msg.pendingAction.args }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Action failed");
+      const resultText = msg.pendingAction.name === "create_episode" ? `Episode #${data.episodeId} is live.` : "Done.";
+      setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionResult: `✅ ${resultText}` } : x)));
+    } catch (err: any) {
+      setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionStatus: "failed", actionResult: `❌ ${err.message}` } : x)));
+    }
+  };
+
+  const cancelAction = (index: number) => {
+    setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionStatus: "cancelled" } : x)));
   };
 
   const toggleListening = () => {
@@ -268,16 +333,33 @@ function VoiceChatPanel({ model, thinking }: { model: GeminiModel; thinking: boo
 
       <div className="border border-border rounded-lg bg-black/20 p-4 h-80 overflow-y-auto space-y-3">
         {messages.length === 0 && (
-          <p className="text-sm text-muted-foreground">Tap the mic or type below to talk to Jerin.</p>
+          <p className="text-sm text-muted-foreground">Tap the mic or type below to talk to Jerin. Ask it to publish an episode and it'll show you a confirm card before doing anything real.</p>
         )}
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${m.role === "user" ? "bg-cyan-900/40 text-cyan-100" : "bg-white/5 text-foreground"}`}>
+            <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${m.role === "user" ? "bg-cyan-900/40 text-cyan-100" : "bg-white/5 text-foreground"}`}>
               {m.text}
               {m.role === "rocky" && (
                 <button onClick={() => speak(m.text, false)} className="ml-2 inline-block align-middle text-cyan-400 hover:text-cyan-300">
                   <Volume2 className="h-3.5 w-3.5 inline" />
                 </button>
+              )}
+
+              {m.pendingAction && (
+                <div className="mt-2 p-2.5 rounded-md border border-cyan-700/50 bg-cyan-950/30">
+                  <p className="text-xs font-semibold text-cyan-300 mb-1.5">⚡ {ACTION_LABELS(m.pendingAction.name, m.pendingAction.args)}</p>
+                  {m.actionStatus === "pending" && (
+                    <div className="flex gap-2">
+                      <Button size="sm" className="h-7 text-xs bg-cyan-600 hover:bg-cyan-500" onClick={() => runAction(i)}>Confirm</Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => cancelAction(i)}>Cancel</Button>
+                    </div>
+                  )}
+                  {m.actionStatus === "confirmed" && !m.actionResult && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Running...</p>
+                  )}
+                  {m.actionStatus === "cancelled" && <p className="text-xs text-muted-foreground">Cancelled.</p>}
+                  {m.actionResult && <p className="text-xs">{m.actionResult}</p>}
+                </div>
               )}
             </div>
           </div>
@@ -300,6 +382,7 @@ function VoiceChatPanel({ model, thinking }: { model: GeminiModel; thinking: boo
       </div>
     </div>
   );
+
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { requireAdmin } from "../middlewares/auth";
 import { logger } from "../lib/logger";
+import { db, episodesTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
@@ -20,10 +21,13 @@ function isRateLimited(): boolean {
 const VOICE_NOTE =
   " Keep responses concise and avoid heavy markdown symbols like **, *, #, or backticks since this reply may be read aloud.";
 
+const ACTION_NOTE =
+  " If the user explicitly asks you to publish, create, or add a new episode to the website (and gives you the necessary details like title, episode number, and embed URL), call the create_episode function instead of just describing what you would do. If they're missing required details, ask for them in plain text first rather than guessing or calling the function with incomplete info. Only call the function when you have enough real information — never invent placeholder values.";
+
 const SYSTEM_PROMPTS: Record<string, string> = {
   chat:
     "You are Jerin, AI copilot for TVR Dubbers (The Voice of Rockstar'z), a Bangla dubbing group focused on the donghua Battle Through the Heavens (BTTH). The founder is Rocky. Help with anything the user asks — content ideas, strategy, analysis, or general questions. Be thorough when needed, concise when not." +
-    VOICE_NOTE,
+    VOICE_NOTE + ACTION_NOTE,
   scene:
     "You are Jerin, AI copilot for TVR Dubbers (The Voice of Rockstar'z), a Bangla dubbing group focused on the donghua Battle Through the Heavens (BTTH). The founder is Rocky. Help the user decide which BTTH scene to dub next — consider trends, fan requests, story arc, character popularity, and engagement potential. Be thorough and specific." +
     VOICE_NOTE,
@@ -33,6 +37,34 @@ const SYSTEM_PROMPTS: Record<string, string> = {
     "You are Jerin, AI copilot for TVR Dubbers (The Voice of Rockstar'z), a Bangla dubbing group focused on the donghua Battle Through the Heavens (BTTH). The founder is Rocky. Analyze the user's audience data — pasted comments, messages, or screenshots — to identify sentiment, recurring requests, loyal viewer patterns, and growth opportunities specific to a Bangladeshi dubbing audience. Be detailed and actionable." +
     VOICE_NOTE,
 };
+
+// Function-calling tools — only offered in "chat" mode. Gemini can propose calling
+// these, but never executes them itself; the frontend shows a confirm card and only
+// the user's explicit tap triggers the real backend action.
+const TOOLS = [
+  {
+    functionDeclarations: [
+      {
+        name: "create_episode",
+        description: "Create and publish a new episode on the TVR Dubbers website.",
+        parameters: {
+          type: "object",
+          properties: {
+            title: { type: "string", description: "Episode title" },
+            episodeNumber: { type: "number", description: "Episode number" },
+            season: { type: "number", description: "Season number, defaults to 1" },
+            genre: { type: "string", description: "Genre/category" },
+            thumbnailUrl: { type: "string", description: "Thumbnail image URL, optional" },
+            primaryServerUrl: { type: "string", description: "Embed URL for the video player (Dailymotion/Rumble/YouTube)" },
+            backupServerUrl: { type: "string", description: "Backup embed URL, optional" },
+            isSpecial: { type: "boolean", description: "Whether this is a special episode" },
+          },
+          required: ["title", "episodeNumber", "primaryServerUrl"],
+        },
+      },
+    ],
+  },
+];
 
 router.post("/rocky/generate", requireAdmin, async (req, res): Promise<void> => {
   if (isRateLimited()) {
@@ -93,6 +125,9 @@ router.post("/rocky/generate", requireAdmin, async (req, res): Promise<void> => 
   if (thinking === false) {
     requestBody.generationConfig = { thinkingConfig: { thinkingBudget: 0 } };
   }
+  if ((mode || "chat") === "chat") {
+    requestBody.tools = TOOLS;
+  }
 
   try {
     const response = await fetch(`${geminiUrl}?key=${apiKey}`, {
@@ -125,15 +160,57 @@ router.post("/rocky/generate", requireAdmin, async (req, res): Promise<void> => 
     }
 
     const data = (await response.json()) as any;
-    const text =
-      data?.candidates?.[0]?.content?.parts?.filter((p: any) => p.text).map((p: any) => p.text).join("") ||
-      "Jerin didn't return a response — try rephrasing.";
+    const responseParts = data?.candidates?.[0]?.content?.parts || [];
+    const text = responseParts.filter((p: any) => p.text).map((p: any) => p.text).join("") || "";
+    const functionCall = responseParts.find((p: any) => p.functionCall)?.functionCall || null;
 
-    res.json({ text, model: selectedModel });
+    if (!text && !functionCall) {
+      res.json({ text: "Jerin didn't return a response — try rephrasing.", model: selectedModel });
+      return;
+    }
+
+    res.json({
+      text: text || (functionCall ? `I'll set that up — confirm below to go ahead.` : ""),
+      model: selectedModel,
+      functionCall: functionCall ? { name: functionCall.name, args: functionCall.args } : undefined,
+    });
   } catch (err) {
     logger.error({ err }, "Jerin generate failed");
     res.status(500).json({ error: "Something went wrong talking to Jerin's brain." });
   }
+});
+
+// POST /rocky/execute-action — runs a real action only after the user has
+// explicitly confirmed it in the UI. Never called automatically by Gemini itself.
+router.post("/rocky/execute-action", requireAdmin, async (req, res): Promise<void> => {
+  const { action, args } = req.body as { action?: string; args?: any };
+
+  if (action === "create_episode") {
+    const { title, episodeNumber, season, genre, thumbnailUrl, primaryServerUrl, backupServerUrl, isSpecial } = args || {};
+    if (!title || !episodeNumber || !primaryServerUrl) {
+      res.status(400).json({ error: "title, episodeNumber, and primaryServerUrl are required." });
+      return;
+    }
+    try {
+      const [episode] = await db.insert(episodesTable).values({
+        title,
+        episodeNumber,
+        season: season ?? 1,
+        genre: genre ?? null,
+        thumbnailUrl: thumbnailUrl ?? null,
+        primaryServerUrl,
+        backupServerUrl: backupServerUrl ?? null,
+        isSpecial: isSpecial ?? false,
+      }).returning();
+      res.json({ success: true, episodeId: episode.id });
+    } catch (err) {
+      logger.error({ err }, "Failed to create episode via chat action");
+      res.status(500).json({ error: "Couldn't create the episode on your site." });
+    }
+    return;
+  }
+
+  res.status(400).json({ error: `Unknown action: ${action}` });
 });
 
 export default router;
