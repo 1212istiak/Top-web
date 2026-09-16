@@ -151,6 +151,7 @@ router.post("/rocky/generate", requireAdmin, async (req, res): Promise<void> => 
     if (!message || !message.trim()) {
       parts.unshift({ text: "Watch this video and suggest an optimized title, description, category/genre, and a curiosity-driven trailer hook, for a Bangla BTTH dubbing channel called TVR Dubbers." });
     }
+    parts.push({ text: "Note: if you're not fully certain of a character's name, say so (e.g. 'possibly Yun Yun') rather than stating it as fact — BTTH has many characters with similar designs and misidentification is common for AI video analysis." });
   }
 
   // Build request body — disable thinking when Quick mode is selected
@@ -268,6 +269,7 @@ router.post("/rocky/execute-action", requireAdmin, async (req, res): Promise<voi
             parts: [
               { text: question || "Watch this video and suggest an optimized title, description, category/genre, and a curiosity-driven trailer hook for a Bangla BTTH dubbing channel." },
               { file_data: { file_uri: videoUrl } },
+              { text: "Note: if you're not fully certain of a character's name, say so (e.g. 'possibly Yun Yun') rather than stating it as fact — BTTH has many characters with similar designs and misidentification is common for AI video analysis." },
             ],
           }],
         }),

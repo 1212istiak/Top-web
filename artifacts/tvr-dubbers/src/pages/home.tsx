@@ -41,7 +41,7 @@ function LazyImage({ src, alt, className }: { src: string, alt: string, classNam
         <img 
           src={src} 
           alt={alt} 
-          className="w-full h-full object-cover transition-opacity duration-700 animate-in fade-in"
+          className="w-full h-full object-cover"
           loading="lazy"
         />
       ) : (

@@ -351,18 +351,23 @@ function VoiceChatPanel({ model, thinking }: { model: GeminiModel; thinking: boo
         </Button>
       </div>
 
-      <div className="border border-border rounded-lg bg-black/20 p-4 h-80 overflow-y-auto space-y-3">
+      <div className="border border-border rounded-lg bg-black/20 p-4 h-80 sm:h-96 overflow-y-auto space-y-4">
         {messages.length === 0 && (
           <p className="text-sm text-muted-foreground">Tap the mic or type below to talk to Jerin. Ask it to publish an episode and it'll show you a confirm card before doing anything real.</p>
         )}
         {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${m.role === "user" ? "bg-cyan-900/40 text-cyan-100" : "bg-white/5 text-foreground"}`}>
+          <div key={i} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 px-1">
+              {m.role === "user" ? "You" : "Jerin"}
+            </span>
+            <div className={`max-w-[85%] rounded-lg px-3 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words ${m.role === "user" ? "bg-cyan-900/40 text-cyan-100" : "bg-white/5 text-foreground"}`}>
               {m.text}
               {m.role === "rocky" && (
-                <button onClick={() => speak(m.text, false)} className="ml-2 inline-block align-middle text-cyan-400 hover:text-cyan-300">
-                  <Volume2 className="h-3.5 w-3.5 inline" />
-                </button>
+                <div className="mt-1.5 pt-1.5 border-t border-white/5">
+                  <button onClick={() => speak(m.text, false)} className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 text-xs">
+                    <Volume2 className="h-3.5 w-3.5" /> Replay
+                  </button>
+                </div>
               )}
 
               {m.pendingAction && (
@@ -378,7 +383,7 @@ function VoiceChatPanel({ model, thinking }: { model: GeminiModel; thinking: boo
                     <p className="text-xs text-muted-foreground flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Running...</p>
                   )}
                   {m.actionStatus === "cancelled" && <p className="text-xs text-muted-foreground">Cancelled.</p>}
-                  {m.actionResult && <p className="text-xs">{m.actionResult}</p>}
+                  {m.actionResult && <p className="text-xs whitespace-pre-wrap leading-relaxed">{m.actionResult}</p>}
                   {m.imageResult && (
                     <div className="mt-2">
                       <img src={m.imageResult} alt="Generated thumbnail" className="rounded-md border border-border max-w-full" />
