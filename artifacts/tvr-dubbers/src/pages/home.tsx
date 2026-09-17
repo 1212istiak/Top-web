@@ -312,7 +312,7 @@ export function Home() {
                 const isLastWatched = lastWatchedId === ep.id.toString();
 
                 return (
-                  <Reveal key={ep.id} delay={(i % 4) * 70} className="h-full">
+                  <div key={ep.id} className="h-full">
                   <div
                     onClick={() => setActiveEpisodeId(ep.id)}
                     onMouseMove={handleSpotlightMove}
@@ -365,7 +365,7 @@ export function Home() {
                       </div>
                     </div>
                   </div>
-                  </Reveal>
+                  </div>
                 );
               })}
             </div>
