@@ -316,9 +316,9 @@ export function Home() {
                   <div
                     onClick={() => setActiveEpisodeId(ep.id)}
                     onMouseMove={handleSpotlightMove}
-                    className="group glass-card rounded-xl overflow-hidden cursor-pointer transition-all hover:scale-[1.02] hover:-translate-y-1 color-cycle-border border-2 relative flex flex-col spotlight h-full"
+                    className="group liquid-tile rounded-3xl overflow-hidden cursor-pointer relative flex flex-col spotlight h-full p-2.5"
                   >
-                    <div className="aspect-video relative overflow-hidden">
+                    <div className="liquid-thumb aspect-video relative overflow-hidden rounded-2xl">
                       <LazyImage src={ep.thumbnailUrl || ""} alt={ep.title} />
                       
                       {/* Overlays */}
@@ -346,7 +346,7 @@ export function Home() {
                       </div>
                     </div>
                     
-                    <div className="p-4 flex-1 flex flex-col">
+                    <div className="px-2 pt-3.5 pb-2 flex-1 flex flex-col">
                       <div className="flex justify-between items-start mb-2">
                         <span className="text-sm font-display font-bold text-cyan-400">EPISODE {ep.episodeNumber}</span>
                         {isLastWatched && (

@@ -165,6 +165,103 @@
   }
 }
 
+/* Liquid-glass tile (iOS-style translucent material). The tile is a frosted
+   panel; its thumbnail (.liquid-thumb) sits inside with its own shadow so it
+   reads as floating on the glass. Hover lifts it, press sinks it. */
+.liquid-tile {
+  position: relative;
+  -webkit-tap-highlight-color: transparent;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.38) 50%, rgba(255, 255, 255, 0.55));
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(15, 23, 42, 0.05),
+    0 0 0 1px rgba(15, 23, 42, 0.06),
+    0 12px 28px -10px rgba(15, 23, 42, 0.22);
+  transition:
+    transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.4s ease,
+    border-color 0.4s ease;
+}
+.dark .liquid-tile {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04) 48%, rgba(255, 255, 255, 0.09));
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.38),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 0 24px rgba(255, 255, 255, 0.04),
+    0 14px 32px -10px rgba(0, 0, 0, 0.7);
+}
+/* Specular highlight along the top-left edge, like light catching glass */
+.liquid-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0) 26%);
+}
+.dark .liquid-tile::before {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.24) 0%, rgba(255, 255, 255, 0) 26%);
+}
+.liquid-thumb {
+  box-shadow:
+    0 10px 22px -8px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.14);
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.liquid-thumb img {
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (hover: hover) and (pointer: fine) {
+  .liquid-tile:hover {
+    transform: translateY(-5px) scale(1.015);
+    border-color: rgba(255, 255, 255, 0.95);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 1),
+      inset 0 -1px 0 rgba(15, 23, 42, 0.05),
+      0 0 0 1px rgba(15, 23, 42, 0.06),
+      0 22px 40px -12px rgba(15, 23, 42, 0.3),
+      0 0 32px rgba(103, 232, 249, 0.25);
+  }
+  .dark .liquid-tile:hover {
+    border-color: rgba(255, 255, 255, 0.4);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.5),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.08),
+      inset 0 0 28px rgba(255, 255, 255, 0.06),
+      0 24px 44px -12px rgba(0, 0, 0, 0.8),
+      0 0 34px rgba(103, 232, 249, 0.2);
+  }
+  .liquid-tile:hover .liquid-thumb {
+    transform: translateY(-2px);
+  }
+  .liquid-tile:hover .liquid-thumb img {
+    transform: scale(1.06);
+  }
+}
+/* Press feedback: sinks like a glass button (works on touch too) */
+.liquid-tile:active {
+  transform: translateY(0) scale(0.97);
+  transition-duration: 0.12s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .liquid-tile,
+  .liquid-thumb,
+  .liquid-thumb img {
+    transition: none;
+  }
+  .liquid-tile:hover,
+  .liquid-tile:active {
+    transform: none;
+  }
+}
+
 /* Pointer-tracked spotlight: a soft glow that follows the cursor across a
    card. The card must be `relative overflow-hidden` and set --mx/--my from
    its onMouseMove handler (see home.tsx). */
