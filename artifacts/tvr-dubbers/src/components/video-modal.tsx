@@ -116,7 +116,7 @@ export function VideoModal({
 
   return (
     <Dialog open={!!episodeId} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-5xl w-[95vw] p-0 bg-card/90 backdrop-blur-xl border-card-border overflow-hidden flex flex-col max-h-[90vh]">
+      <DialogContent className="max-w-5xl w-[95vw] p-0 bg-white/30 backdrop-blur-[40px] backdrop-saturate-150 border-white/60 dark:bg-card/90 dark:backdrop-blur-xl dark:backdrop-saturate-100 dark:border-card-border overflow-hidden flex flex-col max-h-[90vh]">
         <DialogTitle className="sr-only">
           {episode?.title || "Episode Player"}
         </DialogTitle>
@@ -125,9 +125,9 @@ export function VideoModal({
         </DialogDescription>
         
         {/* Header */}
-        <div className="p-4 pr-16 border-b border-border flex justify-between items-center bg-black/90">
+        <div className="p-4 pr-16 border-b border-white/50 dark:border-border flex justify-between items-center bg-white/40 backdrop-blur-3xl dark:bg-black/90 dark:backdrop-blur-none">
           <div>
-            <h2 className="text-xl font-display font-bold text-white flex items-center gap-3">
+            <h2 className="text-xl font-display font-extrabold text-black dark:text-white flex items-center gap-3">
               <span className="bg-primary/20 text-primary px-2 py-0.5 rounded text-sm">
                 EP {episode?.episodeNumber}
               </span>
@@ -160,21 +160,21 @@ export function VideoModal({
               {/* Server Switcher */}
               <div className="flex items-center justify-between">
                 <Tabs value={server} onValueChange={(v) => setServer(v as "primary" | "backup")} className="w-[300px]">
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="primary" disabled={!primaryUrl} className={server === "primary" ? "liquid-pill liquid-static rounded-md" : ""}>Server 1</TabsTrigger>
-                    <TabsTrigger value="backup" disabled={!backupUrl} className={server === "backup" ? "liquid-pill liquid-static rounded-md" : ""}>Server 2</TabsTrigger>
+                  <TabsList className="grid w-full grid-cols-2 bg-white/50 backdrop-blur-3xl shadow-[0_12px_24px_-8px_rgba(15,23,42,0.38),0_3px_7px_rgba(15,23,42,0.12)] dark:bg-muted dark:backdrop-blur-none dark:shadow-none">
+                    <TabsTrigger value="primary" disabled={!primaryUrl} className={server === "primary" ? "liquid-pill liquid-raised liquid-static rounded-md" : ""}>Server 1</TabsTrigger>
+                    <TabsTrigger value="backup" disabled={!backupUrl} className={server === "backup" ? "liquid-pill liquid-raised liquid-static rounded-md" : ""}>Server 2</TabsTrigger>
                   </TabsList>
                 </Tabs>
                 
                 {onNextEpisode && (
-                  <Button variant="secondary" onClick={() => onNextEpisode(episodeId)}>
+                  <Button variant="secondary" className="bg-white/60 backdrop-blur-3xl hover:bg-white/80 shadow-[0_12px_24px_-8px_rgba(15,23,42,0.38),0_3px_7px_rgba(15,23,42,0.12)] dark:bg-secondary dark:backdrop-blur-none dark:hover:bg-secondary/80 dark:shadow-none" onClick={() => onNextEpisode(episodeId)}>
                     Next Episode →
                   </Button>
                 )}
               </div>
 
               {/* Reactions */}
-              <div className="space-y-3 p-4 rounded-2xl liquid-tile liquid-wide liquid-static">
+              <div className="space-y-3 p-4 rounded-2xl liquid-tile liquid-wide liquid-raised liquid-static">
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Reactions</h3>
                 <div className="flex flex-wrap gap-3">
                   {(["👍", "❤️", "👎", "🔥", "😥", "😹", "💀"] as ReactionInputReactionType[]).map((emoji) => {
@@ -183,7 +183,7 @@ export function VideoModal({
                       <button
                         key={emoji}
                         onClick={() => handleReaction(emoji)}
-                        className="group flex items-center gap-1.5 px-3 py-1.5 rounded-full liquid-pill"
+                        className="group flex items-center gap-1.5 px-3 py-1.5 rounded-full liquid-pill liquid-raised"
                       >
                         <span className="text-xl group-hover:scale-110 transition-transform block">{emoji}</span>
                         <span className="text-sm font-mono">{count}</span>
@@ -222,9 +222,9 @@ export function VideoModal({
                 </div>
               ) : (
                 comments?.map((comment) => (
-                  <div key={comment.id} className="bg-white/30 dark:bg-white/5 border border-white/30 dark:border-white/5 rounded-lg p-3 text-sm">
+                  <div key={comment.id} className="bg-white/65 backdrop-blur-3xl border border-white/80 shadow-[0_12px_24px_-8px_rgba(15,23,42,0.38),0_3px_7px_rgba(15,23,42,0.12)] dark:bg-white/5 dark:backdrop-blur-none dark:border-white/5 dark:shadow-none rounded-xl p-3 text-sm">
                     <div className="flex items-baseline justify-between mb-1">
-                      <span className="font-semibold text-cyan-300">{comment.nickname}</span>
+                      <span className="font-semibold text-cyan-700 dark:text-cyan-300">{comment.nickname}</span>
                       <span className="text-xs text-muted-foreground">
                         {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
                       </span>
@@ -241,20 +241,20 @@ export function VideoModal({
                   placeholder="Nickname (optional)" 
                   value={nickname}
                   onChange={(e) => setNickname(e.target.value)}
-                  className="bg-white/40 dark:bg-white/5 border-slate-300/60 dark:border-white/10"
+                  className="bg-white/65 backdrop-blur-3xl border-white/80 shadow-[0_12px_24px_-8px_rgba(15,23,42,0.38),0_3px_7px_rgba(15,23,42,0.12)] dark:bg-white/5 dark:backdrop-blur-none dark:border-white/10 dark:shadow-none"
                   maxLength={30}
                 />
                 <textarea 
                   placeholder="Add a comment..."
                   value={commentBody}
                   onChange={(e) => setCommentBody(e.target.value)}
-                  className="w-full h-20 bg-white/40 dark:bg-white/5 border border-slate-300/60 dark:border-white/10 rounded-md p-2 text-sm resize-none focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all custom-scrollbar"
+                  className="w-full h-20 bg-white/65 backdrop-blur-3xl border border-white/80 shadow-[0_12px_24px_-8px_rgba(15,23,42,0.38),0_3px_7px_rgba(15,23,42,0.12)] dark:bg-white/5 dark:backdrop-blur-none dark:border-white/10 dark:shadow-none rounded-md p-2 text-sm resize-none focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all custom-scrollbar"
                   maxLength={500}
                 />
                 <Button 
                   type="submit" 
                   disabled={!commentBody.trim() || createComment.isPending}
-                  className="w-full rounded-full liquid-pill liquid-pill-active liquid-light-dark text-white"
+                  className="w-full rounded-full liquid-pill liquid-pill-active liquid-cyan-solid liquid-raised liquid-light-dark text-white disabled:opacity-80"
                 >
                   Post Comment
                 </Button>

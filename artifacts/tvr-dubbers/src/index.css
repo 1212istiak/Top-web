@@ -353,6 +353,38 @@
     0 0 18px rgba(34, 211, 238, 0.32),
     var(--lg-pill-drop);
 }
+/* Opaque dark glass (stays dark on light backdrops, e.g. the dialog close button) */
+.liquid-pill.liquid-solid-dark {
+  --lg-light: #fff;
+  --lg-light-mid: rgba(255, 255, 255, 0.5);
+  --lg-rim: rgba(255, 255, 255, 0.22);
+  background: linear-gradient(160deg, rgba(51, 65, 85, 0.92), rgba(15, 23, 42, 0.95));
+  color: #fff;
+}
+/* Solid cyan fill for primary actions (keeps the glass rim + orbiting light) */
+.liquid-pill.liquid-pill-active.liquid-cyan-solid {
+  background: linear-gradient(160deg, #06b6d4, #0891b2);
+}
+/* Light theme only: boxes/buttons that must stand out on a glass dialog get a
+   much stronger blur, a whiter fill and a visible drop shadow. */
+html:not(.dark) .liquid-raised {
+  -webkit-backdrop-filter: blur(48px) saturate(190%);
+  backdrop-filter: blur(48px) saturate(190%);
+}
+html:not(.dark) .liquid-tile.liquid-raised {
+  --lg-tile-bg: linear-gradient(145deg, rgba(255, 255, 255, 0.66), rgba(255, 255, 255, 0.38) 50%, rgba(255, 255, 255, 0.55));
+  --lg-drop: 0 16px 32px -8px rgba(15, 23, 42, 0.4), 0 3px 8px rgba(15, 23, 42, 0.12);
+}
+html:not(.dark) .liquid-pill.liquid-raised {
+  --lg-pill-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.5));
+  --lg-pill-drop: 0 12px 24px -6px rgba(15, 23, 42, 0.42), 0 3px 7px rgba(15, 23, 42, 0.14);
+}
+html:not(.dark) .liquid-pill.liquid-pill-active.liquid-raised {
+  box-shadow:
+    inset 0 0 0 2.5px rgba(255, 255, 255, 0.14),
+    0 0 18px rgba(34, 211, 238, 0.3),
+    var(--lg-pill-drop);
+}
 /* Dark travelling light (for buttons that should show a dark streak) */
 .liquid-pill.liquid-light-dark,
 .dark .liquid-pill.liquid-light-dark {

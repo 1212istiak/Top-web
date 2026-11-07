@@ -31,15 +31,27 @@ export function SparkleBackground() {
     const isLowEnd = (navigator.hardwareConcurrency || 4) < 4;
     const particleCount = isLowEnd ? 20 : 50;
 
-    const particles = Array.from({ length: particleCount }).map(() => ({
-      x: Math.random() * width,
-      y: Math.random() * height,
-      size: Math.random() * 1.5 + 0.5,
-      speedX: (Math.random() - 0.5) * 0.2,
-      speedY: (Math.random() - 0.5) * 0.2,
-      opacity: Math.random() * 0.5 + 0.1,
-      fadeSpeed: (Math.random() - 0.5) * 0.01,
-    }));
+    // Every 5th star is a bright, glowing one; every 4th (offset) drifts fast.
+    const particles = Array.from({ length: particleCount }).map((_, i) => {
+      const bright = i % 5 === 0;
+      const fast = i % 4 === 1;
+      const heading = Math.random() * Math.PI * 2;
+      const pace = 0.4 + Math.random() * 0.6; // px per frame for the fast ones
+      const min = bright ? 0.55 : 0.25;
+      const max = bright ? 1 : 0.95;
+      return {
+        x: Math.random() * width,
+        y: Math.random() * height,
+        size: bright ? 1.6 + Math.random() * 1.2 : 0.6 + Math.random() * 1.2,
+        speedX: fast ? Math.cos(heading) * pace : (Math.random() - 0.5) * 0.2,
+        speedY: fast ? Math.sin(heading) * pace : (Math.random() - 0.5) * 0.2,
+        opacity: min + Math.random() * (max - min),
+        fadeSpeed: (Math.random() < 0.5 ? -1 : 1) * (bright ? 0.012 : 0.004 + Math.random() * 0.006),
+        min,
+        max,
+        bright,
+      };
+    });
 
     // Light mode: soft clouds. Each cloud is a one-off sprite (a cluster of
     // radial-gradient puffs over a faint blue-grey underside) drawn once to an
@@ -160,7 +172,8 @@ export function SparkleBackground() {
         p.y += p.speedY;
         p.opacity += p.fadeSpeed;
 
-        if (p.opacity <= 0.1 || p.opacity >= 0.8) p.fadeSpeed *= -1;
+        if (p.opacity <= p.min) { p.opacity = p.min; p.fadeSpeed = Math.abs(p.fadeSpeed); }
+        else if (p.opacity >= p.max) { p.opacity = p.max; p.fadeSpeed = -Math.abs(p.fadeSpeed); }
 
         // Cursor repulsion: push particles away, fading with distance
         if (!isLowEnd) {
@@ -186,7 +199,12 @@ export function SparkleBackground() {
         // Stars are light in dark mode, dark in light mode
         const color = isDark ? `rgba(255, 255, 255, ${p.opacity})` : `rgba(0, 0, 0, ${p.opacity * 0.5})`;
         ctx.fillStyle = color;
+        if (p.bright && isDark) {
+          ctx.shadowBlur = 8;
+          ctx.shadowColor = 'rgba(170, 230, 255, 0.95)';
+        }
         ctx.fill();
+        ctx.shadowBlur = 0;
       });
 
       // Constellation lines between nearby particles
