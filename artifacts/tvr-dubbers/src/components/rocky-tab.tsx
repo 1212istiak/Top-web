@@ -243,6 +243,15 @@ function ACTION_LABELS(name: string, args: any): string {
   if (name === "create_episode") {
     return `Create episode #${args.episodeNumber}: "${args.title}"${args.genre ? ` (${args.genre})` : ""}`;
   }
+  if (name === "update_episode") {
+    const parts: string[] = [];
+    if (args.primaryServerUrl) parts.push(`Server 1 → ${args.primaryServerUrl}`);
+    if (args.backupServerUrl) parts.push(`Server 2 → ${args.backupServerUrl}`);
+    if (args.title) parts.push(`title → "${args.title}"`);
+    if (args.genre) parts.push(`genre → ${args.genre}`);
+    if (args.thumbnailUrl) parts.push(`thumbnail → ${args.thumbnailUrl}`);
+    return `Update${args.season ? ` S${args.season}` : ""} EP${args.episodeNumber}: ${parts.join(", ")}`;
+  }
   if (name === "analyze_video") {
     return `Watch video: ${args.videoUrl}`;
   }
@@ -304,6 +313,8 @@ function VoiceChatPanel({ model, thinking }: { model: GeminiModel; thinking: boo
 
       if (msg.pendingAction.name === "create_episode") {
         setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionResult: `✅ Episode #${data.episodeId} is live.` } : x)));
+      } else if (msg.pendingAction.name === "update_episode") {
+        setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionResult: `✅ Updated S${data.season} EP${data.episodeNumber} (${(data.changed || []).join(", ")}).` } : x)));
       } else if (msg.pendingAction.name === "analyze_video") {
         setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionResult: `✅ ${data.text}` } : x)));
       } else if (msg.pendingAction.name === "generate_thumbnail") {

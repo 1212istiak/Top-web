@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { requireAdmin } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { db, episodesTable } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -22,7 +23,7 @@ const VOICE_NOTE =
   " Keep responses concise and avoid heavy markdown symbols like **, *, #, or backticks since this reply may be read aloud.";
 
 const ACTION_NOTE =
-  " You can take real actions, not just describe them, by calling functions: create_episode (publish a new episode to the website), analyze_video (watch a YouTube/video URL and report back what you see/hear), generate_thumbnail (create an actual thumbnail image from a text description), and schedule_social_post (draft a social post — note: the actual video file must still be attached by the user in the Publish tab, since you can't access their phone's files; use this only for text-only posts like announcements, or to prepare a draft the user will attach media to). Only call a function when you have enough real information for it — ask for missing details in plain text first rather than guessing or inventing placeholder values.";
+  " You can take real actions, not just describe them, by calling functions: create_episode (publish a new episode to the website), update_episode (change an EXISTING episode: set/replace its Server 1 or Server 2 URL, title, genre or thumbnail — use the WEBSITE EPISODES DATABASE list below to find it; when the user says to put a URL in the empty server slot, use whichever slot is EMPTY; when the user says to change/overwrite Server 1 or Server 2, do exactly that and replace the current URL; if it is ambiguous which slot or which season, ask first), analyze_video (watch a YouTube/video URL and report back what you see/hear), generate_thumbnail (create an actual thumbnail image from a text description), and schedule_social_post (draft a social post — note: the actual video file must still be attached by the user in the Publish tab, since you can't access their phone's files; use this only for text-only posts like announcements, or to prepare a draft the user will attach media to). Only call a function when you have enough real information for it — ask for missing details in plain text first rather than guessing or inventing placeholder values.";
 
 const SYSTEM_PROMPTS: Record<string, string> = {
   chat:
@@ -60,6 +61,24 @@ const TOOLS = [
             isSpecial: { type: "boolean", description: "Whether this is a special episode" },
           },
           required: ["title", "episodeNumber", "primaryServerUrl"],
+        },
+      },
+      {
+        name: "update_episode",
+        description: "Edit an existing episode on the website. Only include the fields that should change. The user will see a confirm card before anything is saved.",
+        parameters: {
+          type: "object",
+          properties: {
+            episodeNumber: { type: "number", description: "Number of the episode to edit" },
+            season: { type: "number", description: "Season of that episode (from the episodes list)" },
+            isSpecial: { type: "boolean", description: "True if the episode to edit is a special episode" },
+            primaryServerUrl: { type: "string", description: "New Server 1 URL (replaces the current one)" },
+            backupServerUrl: { type: "string", description: "New Server 2 URL (replaces the current one)" },
+            title: { type: "string", description: "New title, optional" },
+            genre: { type: "string", description: "New genre, optional" },
+            thumbnailUrl: { type: "string", description: "New thumbnail URL, optional" },
+          },
+          required: ["episodeNumber"],
         },
       },
       {
@@ -269,6 +288,40 @@ router.post("/rocky/execute-action", requireAdmin, async (req, res): Promise<voi
     } catch (err) {
       logger.error({ err }, "Failed to create episode via chat action");
       res.status(500).json({ error: "Couldn't create the episode on your site." });
+    }
+    return;
+  }
+
+  if (action === "update_episode") {
+    const { episodeNumber, season, isSpecial, primaryServerUrl, backupServerUrl, title, genre, thumbnailUrl } = args || {};
+    const changes: Record<string, string> = {};
+    if (typeof primaryServerUrl === "string" && primaryServerUrl.trim()) changes.primaryServerUrl = primaryServerUrl.trim();
+    if (typeof backupServerUrl === "string" && backupServerUrl.trim()) changes.backupServerUrl = backupServerUrl.trim();
+    if (typeof title === "string" && title.trim()) changes.title = title.trim();
+    if (typeof genre === "string" && genre.trim()) changes.genre = genre.trim();
+    if (typeof thumbnailUrl === "string" && thumbnailUrl.trim()) changes.thumbnailUrl = thumbnailUrl.trim();
+    if (!episodeNumber || Object.keys(changes).length === 0) {
+      res.status(400).json({ error: "episodeNumber and at least one field to change are required." });
+      return;
+    }
+    try {
+      const conds = [eq(episodesTable.episodeNumber, Number(episodeNumber))];
+      if (season) conds.push(eq(episodesTable.season, Number(season)));
+      if (typeof isSpecial === "boolean") conds.push(eq(episodesTable.isSpecial, isSpecial));
+      const matches = await db.select().from(episodesTable).where(and(...conds));
+      if (matches.length === 0) {
+        res.status(404).json({ error: `No episode found with number ${episodeNumber}${season ? ` in season ${season}` : ""}.` });
+        return;
+      }
+      if (matches.length > 1) {
+        res.status(409).json({ error: `Episode ${episodeNumber} exists in ${matches.length} places (different seasons/specials). Tell Jerin which season.` });
+        return;
+      }
+      const [updated] = await db.update(episodesTable).set(changes).where(eq(episodesTable.id, matches[0].id)).returning();
+      res.json({ success: true, episodeId: updated.id, season: updated.season, episodeNumber: updated.episodeNumber, changed: Object.keys(changes) });
+    } catch (err) {
+      logger.error({ err }, "Failed to update episode via chat action");
+      res.status(500).json({ error: "Couldn't update the episode on your site." });
     }
     return;
   }
