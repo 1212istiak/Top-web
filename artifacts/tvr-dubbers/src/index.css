@@ -240,15 +240,32 @@
     var(--lg-rim) 250deg,
     var(--lg-rim) 360deg
   );
+  /* Stretch: near the middle of an edge (angle = multiple of 90deg) the light
+     elongates and thins toward its next corner; near corners it bunches up. */
+  --lg-s: calc((1 + cos(var(--lg-angle) * 4)) / 2);
+  --lg-L: calc(9deg * (1 + 1.2 * var(--lg-s)));
+  --lg-T: calc(1 + 3 * var(--lg-s));
+  background: conic-gradient(
+    from var(--lg-angle),
+    var(--lg-rim) 0deg,
+    var(--lg-light) var(--lg-L),
+    var(--lg-light-mid) calc(var(--lg-L) + 11deg * var(--lg-T)),
+    var(--lg-rim) min(var(--lg-L) + 61deg * var(--lg-T), 172deg),
+    var(--lg-rim) 180deg,
+    var(--lg-light) calc(180deg + var(--lg-L)),
+    var(--lg-light-mid) calc(180deg + var(--lg-L) + 11deg * var(--lg-T)),
+    var(--lg-rim) min(180deg + var(--lg-L) + 61deg * var(--lg-T), 352deg),
+    var(--lg-rim) 360deg
+  );
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask-composite: exclude;
-  animation: lgOrbit 12s linear infinite;
+  animation: lgOrbit 24s linear infinite;
 }
 .liquid-pill { --lg-start: 68deg; }
 .liquid-pill::before { animation-duration: 6s; }
-.liquid-lap-lg::before { animation-duration: 18s; }
+.liquid-lap-lg::before { animation-duration: 30s; }
 
 .liquid-tile {
   background: var(--lg-tile-bg);
