@@ -105,7 +105,7 @@ export function Navbar() {
             {/* Mobile Search Icon */}
             <button
               onClick={() => setShowMobileSearch(v => !v)}
-              className="md:hidden w-9 h-9 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-foreground transition-colors"
+              className="md:hidden w-9 h-9 flex items-center justify-center rounded-full liquid-pill text-foreground"
               aria-label="Search"
             >
               <Search className="h-4 w-4" />
@@ -118,7 +118,7 @@ export function Navbar() {
                 <Input 
                   type="text" 
                   placeholder="Search donghua..." 
-                  className="pl-9 bg-white/5 border-white/10 focus-visible:border-cyan-500/50 rounded-full transition-all group-hover:bg-white/10"
+                  className="pl-9 liquid-pill liquid-static rounded-full"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onFocus={() => setIsSearchFocused(true)}
@@ -178,7 +178,7 @@ export function Navbar() {
                 type="text" 
                 placeholder="Search donghua..." 
                 autoFocus
-                className="pl-9 bg-white/5 border-white/10 focus-visible:border-cyan-500/50 rounded-full"
+                className="pl-9 liquid-pill liquid-static rounded-full"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => setIsSearchFocused(true)}

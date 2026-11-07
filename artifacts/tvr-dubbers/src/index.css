@@ -165,36 +165,56 @@
   }
 }
 
-/* Liquid-glass tile (iOS-style translucent material). The tile is a frosted
-   panel; its thumbnail (.liquid-thumb) sits inside with its own shadow so it
-   reads as floating on the glass. Hover lifts it, press sinks it. */
-.liquid-tile {
+/* Liquid-glass material (iOS-style translucent surfaces) in two shapes:
+     .liquid-tile  big cards. Thumbnails (.liquid-thumb) sit inside the glass
+                   and float on it. Hover lifts, press sinks.
+     .liquid-pill  capsule buttons, filters, inputs.
+   Modifiers: .liquid-static (no hover/press motion), .liquid-dark (force the
+   dark material, e.g. inside always-dark overlays), .liquid-pill-active
+   (cyan-tinted glass for selected / primary pills).
+   Light/dark values live in the --lg-* variables below. */
+.liquid-tile,
+.liquid-pill {
+  --lg-tile-bg: linear-gradient(145deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.38) 50%, rgba(255, 255, 255, 0.55));
+  --lg-pill-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.44));
+  --lg-pill-bg-hover: linear-gradient(160deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.6));
+  --lg-border: rgba(255, 255, 255, 0.85);
+  --lg-border-hover: rgba(255, 255, 255, 0.95);
+  --lg-rim: inset 0 1px 0 rgba(255, 255, 255, 0.9), inset 0 -1px 0 rgba(15, 23, 42, 0.05), 0 0 0 1px rgba(15, 23, 42, 0.06);
+  --lg-rim-hover: inset 0 1px 0 #fff, inset 0 -1px 0 rgba(15, 23, 42, 0.05), 0 0 0 1px rgba(15, 23, 42, 0.06);
+  --lg-drop: 0 12px 28px -10px rgba(15, 23, 42, 0.22);
+  --lg-drop-hover: 0 22px 40px -12px rgba(15, 23, 42, 0.3), 0 0 32px rgba(103, 232, 249, 0.25);
+  --lg-pill-drop: 0 6px 14px -6px rgba(15, 23, 42, 0.25);
+  --lg-spec: linear-gradient(160deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0) 26%);
   position: relative;
   -webkit-tap-highlight-color: transparent;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.38) 50%, rgba(255, 255, 255, 0.55));
+}
+.dark .liquid-tile,
+.dark .liquid-pill,
+.liquid-dark {
+  --lg-tile-bg: linear-gradient(145deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04) 48%, rgba(255, 255, 255, 0.09));
+  --lg-pill-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.04));
+  --lg-pill-bg-hover: linear-gradient(160deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.08));
+  --lg-border: rgba(255, 255, 255, 0.22);
+  --lg-border-hover: rgba(255, 255, 255, 0.42);
+  --lg-rim: inset 0 1px 0 rgba(255, 255, 255, 0.38), inset 0 -1px 0 rgba(255, 255, 255, 0.06), inset 0 0 24px rgba(255, 255, 255, 0.04);
+  --lg-rim-hover: inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 -1px 0 rgba(255, 255, 255, 0.08), inset 0 0 28px rgba(255, 255, 255, 0.06);
+  --lg-drop: 0 14px 32px -10px rgba(0, 0, 0, 0.7);
+  --lg-drop-hover: 0 24px 44px -12px rgba(0, 0, 0, 0.8), 0 0 34px rgba(103, 232, 249, 0.2);
+  --lg-pill-drop: 0 6px 14px -6px rgba(0, 0, 0, 0.7);
+  --lg-spec: linear-gradient(160deg, rgba(255, 255, 255, 0.24) 0%, rgba(255, 255, 255, 0) 26%);
+}
+
+.liquid-tile {
+  background: var(--lg-tile-bg);
   -webkit-backdrop-filter: blur(22px) saturate(180%);
   backdrop-filter: blur(22px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    inset 0 -1px 0 rgba(15, 23, 42, 0.05),
-    0 0 0 1px rgba(15, 23, 42, 0.06),
-    0 12px 28px -10px rgba(15, 23, 42, 0.22);
+  border: 1px solid var(--lg-border);
+  box-shadow: var(--lg-rim), var(--lg-drop);
   transition:
     transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
     box-shadow 0.4s ease,
     border-color 0.4s ease;
-}
-.dark .liquid-tile {
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04) 48%, rgba(255, 255, 255, 0.09));
-  border-color: rgba(255, 255, 255, 0.2);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.38),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.06),
-    inset 0 0 24px rgba(255, 255, 255, 0.04),
-    0 14px 32px -10px rgba(0, 0, 0, 0.7);
 }
 /* Specular highlight along the top-left edge, like light catching glass */
 .liquid-tile::before {
@@ -204,10 +224,7 @@
   z-index: 10;
   border-radius: inherit;
   pointer-events: none;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0) 26%);
-}
-.dark .liquid-tile::before {
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.24) 0%, rgba(255, 255, 255, 0) 26%);
+  background: var(--lg-spec);
 }
 .liquid-thumb {
   box-shadow:
@@ -218,46 +235,80 @@
 .liquid-thumb img {
   transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
 }
+
+.liquid-pill {
+  background: var(--lg-pill-bg);
+  -webkit-backdrop-filter: blur(16px) saturate(170%);
+  backdrop-filter: blur(16px) saturate(170%);
+  border: 1px solid var(--lg-border);
+  box-shadow: var(--lg-rim), var(--lg-pill-drop);
+  transition:
+    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.3s ease,
+    background 0.3s ease,
+    border-color 0.3s ease,
+    color 0.3s ease,
+    filter 0.3s ease;
+}
+.liquid-pill:focus-visible {
+  outline: none;
+  border-color: rgba(103, 232, 249, 0.85);
+  box-shadow: var(--lg-rim), 0 0 0 3px rgba(103, 232, 249, 0.25);
+}
+/* Selected / primary pill: cyan-tinted glass */
+.liquid-pill.liquid-pill-active {
+  background: linear-gradient(160deg, rgba(34, 211, 238, 0.9), rgba(8, 145, 178, 0.78));
+  border-color: rgba(165, 243, 252, 0.75);
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.12),
+    0 0 20px rgba(34, 211, 238, 0.38),
+    var(--lg-pill-drop);
+}
+
 @media (hover: hover) and (pointer: fine) {
-  .liquid-tile:hover {
+  .liquid-tile:not(.liquid-static):hover {
     transform: translateY(-5px) scale(1.015);
-    border-color: rgba(255, 255, 255, 0.95);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 1),
-      inset 0 -1px 0 rgba(15, 23, 42, 0.05),
-      0 0 0 1px rgba(15, 23, 42, 0.06),
-      0 22px 40px -12px rgba(15, 23, 42, 0.3),
-      0 0 32px rgba(103, 232, 249, 0.25);
+    border-color: var(--lg-border-hover);
+    box-shadow: var(--lg-rim-hover), var(--lg-drop-hover);
   }
-  .dark .liquid-tile:hover {
-    border-color: rgba(255, 255, 255, 0.4);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.5),
-      inset 0 -1px 0 rgba(255, 255, 255, 0.08),
-      inset 0 0 28px rgba(255, 255, 255, 0.06),
-      0 24px 44px -12px rgba(0, 0, 0, 0.8),
-      0 0 34px rgba(103, 232, 249, 0.2);
-  }
-  .liquid-tile:hover .liquid-thumb {
+  .liquid-tile:not(.liquid-static):hover .liquid-thumb {
     transform: translateY(-2px);
   }
-  .liquid-tile:hover .liquid-thumb img {
+  .liquid-tile:not(.liquid-static):hover .liquid-thumb img {
     transform: scale(1.06);
+  }
+  .liquid-pill:not(.liquid-static):not(.liquid-pill-active):hover {
+    background: var(--lg-pill-bg-hover);
+    border-color: var(--lg-border-hover);
+    transform: translateY(-1px);
+  }
+  .liquid-pill.liquid-pill-active:not(.liquid-static):hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
   }
 }
 /* Press feedback: sinks like a glass button (works on touch too) */
-.liquid-tile:active {
+.liquid-tile:not(.liquid-static):active {
   transform: translateY(0) scale(0.97);
   transition-duration: 0.12s;
 }
+.liquid-pill:not(.liquid-static):active {
+  transform: scale(0.95);
+  transition-duration: 0.1s;
+}
 @media (prefers-reduced-motion: reduce) {
   .liquid-tile,
+  .liquid-pill,
   .liquid-thumb,
   .liquid-thumb img {
     transition: none;
   }
   .liquid-tile:hover,
-  .liquid-tile:active {
+  .liquid-tile:active,
+  .liquid-pill:hover,
+  .liquid-pill:active {
     transform: none;
   }
 }

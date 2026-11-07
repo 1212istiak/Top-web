@@ -58,7 +58,7 @@ export function Footer() {
             <h3 className="text-sm font-display font-bold text-foreground uppercase tracking-widest border-b border-border pb-2 inline-block">
               Voice Artists
             </h3>
-            <div className="bg-foreground/5 border border-border rounded-xl p-4">
+            <div className="liquid-tile liquid-static rounded-2xl p-4">
               {voiceArtists && voiceArtists.length > 0 ? (
                 <ul className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
                   {voiceArtists.map((artist) => (
@@ -122,7 +122,7 @@ function SocialLink({ href, icon, label, onClick }: { href?: string | null, icon
     <a
       href={href || "#"}
       onClick={(e) => onClick(e, href)}
-      className="w-10 h-10 rounded-full bg-foreground/5 hover:bg-cyan-900/40 border border-border hover:border-cyan-500/50 flex items-center justify-center text-lg text-foreground/70 hover:text-cyan-400 transition-all hover:scale-110"
+      className="w-10 h-10 rounded-full liquid-pill flex items-center justify-center text-lg text-foreground/70 hover:text-cyan-500"
       title={label}
       aria-label={label}
     >
