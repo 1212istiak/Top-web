@@ -466,10 +466,10 @@ html:not(.dark) .liquid-pill.liquid-pill-active.liquid-raised {
    slides off one side while the new one slides in from the other. */
 /* Episode swap: the old pop-up slides one way while shrinking, the new one
    slides in from the other side while growing back to full size. */
-@keyframes pvInLeft { from { transform: translateX(-105vw) scale(0.6); opacity: 0.3; } to { transform: translateX(0) scale(1); opacity: 1; } }
-@keyframes pvInRight { from { transform: translateX(105vw) scale(0.6); opacity: 0.3; } to { transform: translateX(0) scale(1); opacity: 1; } }
-@keyframes pvOutLeft { from { transform: translateX(0) scale(1); opacity: 1; } to { transform: translateX(-105vw) scale(0.6); opacity: 0.3; } }
-@keyframes pvOutRight { from { transform: translateX(0) scale(1); opacity: 1; } to { transform: translateX(105vw) scale(0.6); opacity: 0.3; } }
+@keyframes pvInLeft { from { transform: translateX(-105vw) scale(0.9); opacity: 0.3; } to { transform: translateX(0) scale(1); opacity: 1; } }
+@keyframes pvInRight { from { transform: translateX(105vw) scale(0.9); opacity: 0.3; } to { transform: translateX(0) scale(1); opacity: 1; } }
+@keyframes pvOutLeft { from { transform: translateX(0) scale(1); opacity: 1; } to { transform: translateX(-105vw) scale(0.9); opacity: 0.3; } }
+@keyframes pvOutRight { from { transform: translateX(0) scale(1); opacity: 1; } to { transform: translateX(105vw) scale(0.9); opacity: 0.3; } }
 .pv-in-left { animation: pvInLeft 0.9s cubic-bezier(0.65, 0, 0.25, 1) both; }
 .pv-in-right { animation: pvInRight 0.9s cubic-bezier(0.65, 0, 0.25, 1) both; }
 .pv-out-left { animation: pvOutLeft 0.9s cubic-bezier(0.65, 0, 0.25, 1) both; }

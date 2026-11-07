@@ -35,6 +35,7 @@ const PANEL_ANIM_CLASS: Record<PanelAnim, string> = {
 };
 
 const navBtn =
+  "h-9 px-2 sm:px-4 text-sm " +
   "bg-white/60 backdrop-blur-3xl hover:bg-white/80 shadow-[0_12px_24px_-8px_rgba(15,23,42,0.38),0_3px_7px_rgba(15,23,42,0.12)] dark:bg-secondary dark:backdrop-blur-none dark:hover:bg-secondary/80 dark:shadow-none disabled:opacity-100 disabled:text-foreground/20 disabled:shadow-none";
 // Unavailable server tab: text fades to almost the background colour
 const unavailable = "disabled:opacity-100 disabled:text-foreground/20";
@@ -280,23 +281,23 @@ function PlayerPanel({
 
             <div className="p-4 space-y-6 shrink-0">
               {/* Server Switcher */}
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <Tabs value={activeServer} onValueChange={(v) => setServer(v as "primary" | "backup")} className="w-[300px] max-w-full">
-                  <TabsList className="grid w-full grid-cols-2 bg-white/50 backdrop-blur-3xl shadow-[0_12px_24px_-8px_rgba(15,23,42,0.38),0_3px_7px_rgba(15,23,42,0.12)] dark:bg-muted dark:backdrop-blur-none dark:shadow-none">
-                    <TabsTrigger value="primary" disabled={!primaryUrl} className={cn(activeServer === "primary" && "liquid-pill liquid-raised liquid-static rounded-md", unavailable)}>Server 1</TabsTrigger>
-                    <TabsTrigger value="backup" disabled={!backupUrl} className={cn(activeServer === "backup" && "liquid-pill liquid-raised liquid-static rounded-md", unavailable)}>Server 2</TabsTrigger>
+              <div className="flex flex-nowrap items-center justify-between gap-2">
+                <Tabs value={activeServer} onValueChange={(v) => setServer(v as "primary" | "backup")} className="w-auto min-w-0 shrink">
+                  <TabsList className="grid w-full grid-cols-2 h-9 p-0.5 bg-white/50 backdrop-blur-3xl shadow-[0_12px_24px_-8px_rgba(15,23,42,0.38),0_3px_7px_rgba(15,23,42,0.12)] dark:bg-muted dark:backdrop-blur-none dark:shadow-none">
+                    <TabsTrigger value="primary" disabled={!primaryUrl} className={cn("px-2.5 text-xs sm:text-sm", activeServer === "primary" && "liquid-pill liquid-raised liquid-static rounded-md", unavailable)}>Server 1</TabsTrigger>
+                    <TabsTrigger value="backup" disabled={!backupUrl} className={cn("px-2.5 text-xs sm:text-sm", activeServer === "backup" && "liquid-pill liquid-raised liquid-static rounded-md", unavailable)}>Server 2</TabsTrigger>
                   </TabsList>
                 </Tabs>
                 
-                <div className="flex items-center gap-2 ml-auto">
+                <div className="flex shrink-0 items-center gap-1.5 sm:gap-2 ml-auto">
                   <Button
                     variant="secondary"
                     className={navBtn}
                     disabled={!nav.prev}
                     onClick={() => onGo(nav.prev, "prev")}
                   >
-                    <ChevronLeft className="mr-1 h-4 w-4" />
-                    Previous Episode
+                    <ChevronLeft className="mr-0.5 h-4 w-4" />
+                    Previous
                   </Button>
                   <Button
                     variant="secondary"
@@ -304,26 +305,26 @@ function PlayerPanel({
                     disabled={!nav.next}
                     onClick={() => onGo(nav.next, "next")}
                   >
-                    Next Episode
-                    <ChevronRight className="ml-1 h-4 w-4" />
+                    Next
+                    <ChevronRight className="ml-0.5 h-4 w-4" />
                   </Button>
                 </div>
               </div>
 
               {/* Reactions */}
-              <div className="space-y-3 p-4 rounded-2xl liquid-tile liquid-wide liquid-raised liquid-static">
+              <div className="space-y-3 p-2.5 sm:p-4 rounded-2xl liquid-tile liquid-wide liquid-raised liquid-static">
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Reactions</h3>
-                <div className="flex flex-wrap gap-3">
+                <div className="flex flex-nowrap justify-between sm:justify-start gap-1 sm:gap-3">
                   {(["👍", "❤️", "👎", "🔥", "😥", "😹", "💀"] as ReactionInputReactionType[]).map((emoji) => {
                     const count = reactions?.counts?.[emoji] || 0;
                     return (
                       <button
                         key={emoji}
                         onClick={() => handleReaction(emoji)}
-                        className="group flex items-center gap-1.5 px-3 py-1.5 rounded-full liquid-pill liquid-raised"
+                        className="group flex items-center gap-0.5 sm:gap-1.5 px-1 sm:px-3 py-1.5 rounded-full liquid-pill liquid-raised min-w-0"
                       >
-                        <span className="text-xl group-hover:scale-110 transition-transform block">{emoji}</span>
-                        <span className="text-sm font-mono">{count}</span>
+                        <span className="text-base sm:text-xl group-hover:scale-110 transition-transform block">{emoji}</span>
+                        <span className="text-[11px] sm:text-sm font-mono">{count}</span>
                       </button>
                     );
                   })}
@@ -344,7 +345,7 @@ function PlayerPanel({
           </div>
 
           {/* Right Column: Comments */}
-          <div className="w-full md:w-[350px] border-t md:border-t-0 md:border-l border-border liquid-pane flex flex-col shrink-0 h-[60dvh] min-h-[22rem] md:min-h-0 md:shrink md:h-auto">
+          <div className="w-full md:w-[350px] border-t md:border-t-0 md:border-l border-border liquid-pane flex flex-col shrink-0 md:shrink md:h-auto">
             <div className="p-4 border-b border-border/50 shrink-0">
               <h3 className="font-display font-semibold flex items-center gap-2">
                 Comments 
@@ -352,9 +353,9 @@ function PlayerPanel({
               </h3>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar max-h-[45dvh] md:max-h-none">
               {comments?.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-sm text-muted-foreground text-center">
+                <div className="h-full py-8 flex items-center justify-center text-sm text-muted-foreground text-center">
                   Be the first to comment!
                 </div>
               ) : (
