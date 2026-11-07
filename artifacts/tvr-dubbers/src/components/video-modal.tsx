@@ -230,7 +230,7 @@ function PlayerPanel({
   return (
     <div
       className={cn(
-        "pointer-events-auto col-start-1 row-start-1 relative w-[95vw] max-w-5xl max-h-[90vh] flex flex-col overflow-hidden rounded-lg border shadow-lg",
+        "pointer-events-auto col-start-1 row-start-1 relative w-[95vw] max-w-5xl max-h-[90dvh] flex flex-col overflow-hidden rounded-lg border shadow-lg",
         "bg-white/30 backdrop-blur-[40px] backdrop-saturate-150 border-white/60 dark:bg-card/90 dark:backdrop-blur-xl dark:backdrop-saturate-100 dark:border-card-border",
         PANEL_ANIM_CLASS[anim],
       )}
@@ -262,10 +262,10 @@ function PlayerPanel({
         </div>
 
         {/* Player and Content Area */}
-        <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+        <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-y-auto md:overflow-hidden custom-scrollbar">
           
           {/* Main Left Column: Video + Reactions */}
-          <div className="flex-1 flex flex-col overflow-y-auto custom-scrollbar">
+          <div className="flex-none md:flex-1 flex flex-col md:overflow-y-auto custom-scrollbar">
             
             {/* Player Wrapper */}
             <div className="w-full bg-black aspect-video relative flex-shrink-0">
@@ -344,7 +344,7 @@ function PlayerPanel({
           </div>
 
           {/* Right Column: Comments */}
-          <div className="w-full md:w-[350px] border-t md:border-t-0 md:border-l border-border liquid-pane flex flex-col h-[50vh] md:h-auto">
+          <div className="w-full md:w-[350px] border-t md:border-t-0 md:border-l border-border liquid-pane flex flex-col shrink-0 h-[60dvh] min-h-[22rem] md:min-h-0 md:shrink md:h-auto">
             <div className="p-4 border-b border-border/50 shrink-0">
               <h3 className="font-display font-semibold flex items-center gap-2">
                 Comments 
