@@ -28,10 +28,10 @@ type Panel = { key: number; id: number; anim: PanelAnim };
 
 const PANEL_ANIM_CLASS: Record<PanelAnim, string> = {
   none: "",
-  "in-left": "pv-in-left",
-  "in-right": "pv-in-right",
-  "out-left": "pv-out-left pointer-events-none",
-  "out-right": "pv-out-right pointer-events-none",
+  "in-left": "pv-in-left pv-moving",
+  "in-right": "pv-in-right pv-moving",
+  "out-left": "pv-out-left pv-moving pointer-events-none",
+  "out-right": "pv-out-right pv-moving pointer-events-none",
 };
 
 const navBtn =
@@ -114,7 +114,7 @@ export function VideoModal({
             key={p.key}
             episodeId={p.id}
             anim={p.anim}
-            frozen={p.anim.startsWith("out")}
+            frozen={p.anim !== "none"}
             getNeighbors={getNeighbors}
             onGo={onGo}
             onAnimDone={() => settle(p.key)}
@@ -312,16 +312,15 @@ function PlayerPanel({
               </div>
 
               {/* Reactions */}
-              <div className="space-y-3 p-2.5 sm:p-4 rounded-2xl liquid-tile liquid-wide liquid-raised liquid-static">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Reactions</h3>
-                <div className="flex flex-nowrap justify-between sm:justify-start gap-1 sm:gap-3">
+              <div className="p-2.5 sm:p-3 rounded-2xl liquid-tile liquid-wide liquid-raised liquid-static">
+                <div className="flex flex-nowrap sm:justify-start gap-1 sm:gap-3">
                   {(["👍", "❤️", "👎", "🔥", "😥", "😹", "💀"] as ReactionInputReactionType[]).map((emoji) => {
                     const count = reactions?.counts?.[emoji] || 0;
                     return (
                       <button
                         key={emoji}
                         onClick={() => handleReaction(emoji)}
-                        className="group flex items-center gap-0.5 sm:gap-1.5 px-1 sm:px-3 py-1.5 rounded-full liquid-pill liquid-raised min-w-0"
+                        className="group flex items-center gap-0.5 sm:gap-1.5 flex-1 min-w-0 justify-center sm:flex-none sm:justify-start px-0.5 sm:px-3 py-1.5 rounded-full liquid-pill liquid-raised"
                       >
                         <span className="text-base sm:text-xl group-hover:scale-110 transition-transform block">{emoji}</span>
                         <span className="text-[11px] sm:text-sm font-mono">{count}</span>

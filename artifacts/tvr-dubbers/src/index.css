@@ -474,10 +474,19 @@ html:not(.dark) .liquid-pill.liquid-pill-active.liquid-raised {
 .pv-in-right { animation: pvInRight 0.9s cubic-bezier(0.65, 0, 0.25, 1) both; }
 .pv-out-left { animation: pvOutLeft 0.9s cubic-bezier(0.65, 0, 0.25, 1) both; }
 .pv-out-right { animation: pvOutRight 0.9s cubic-bezier(0.65, 0, 0.25, 1) both; }
-@media (prefers-reduced-motion: reduce) {
-  .pv-in-left, .pv-in-right, .pv-out-left, .pv-out-right { animation: none; }
-  .pv-out-left, .pv-out-right { display: none; }
+/* While a pop-up is moving, drop the heavy backdrop blur and the orbiting rim
+   lights (both repaint every frame and make phones stutter). The slide runs on
+   the GPU as a plain transform. Not tied to prefers-reduced-motion on purpose:
+   phones with "remove animations" on would otherwise skip the swap entirely. */
+.pv-moving { will-change: transform, opacity; }
+.pv-moving,
+.pv-moving * {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
+.pv-moving .liquid-pill::before,
+.pv-moving .liquid-tile::before { animation-play-state: paused !important; }
+html:not(.dark) .pv-moving { background-color: rgba(226, 232, 240, 0.92); }
 
 /* Custom cursor: hide the native pointer on real desktop mice so only the
    dot + ring from CursorEffects is visible. Left untouched on touch devices. */

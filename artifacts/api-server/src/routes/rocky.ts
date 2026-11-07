@@ -136,7 +136,33 @@ router.post("/rocky/generate", requireAdmin, async (req, res): Promise<void> => 
     : "gemini-3.8-flash";
 
   const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent`;
-  const systemPrompt = SYSTEM_PROMPTS[mode || "chat"] || SYSTEM_PROMPTS.chat;
+  let systemPrompt = SYSTEM_PROMPTS[mode || "chat"] || SYSTEM_PROMPTS.chat;
+
+  // Read-only snapshot of the website's episodes so Jerin can answer questions about them
+  // (which episodes exist, which video URLs are set, which are missing a backup, etc.)
+  try {
+    const rows = await db
+      .select({
+        n: episodesTable.episodeNumber,
+        season: episodesTable.season,
+        title: episodesTable.title,
+        special: episodesTable.isSpecial,
+        primary: episodesTable.primaryServerUrl,
+        backup: episodesTable.backupServerUrl,
+        views: episodesTable.viewCount,
+      })
+      .from(episodesTable)
+      .orderBy(episodesTable.season, episodesTable.episodeNumber);
+    const lines = rows.map(
+      (r) =>
+        `S${r.season} EP${r.n}${r.special ? " [special]" : ""} | ${r.title} | server1: ${r.primary || "EMPTY"} | server2: ${r.backup || "EMPTY"} | ${r.views} views`,
+    );
+    systemPrompt +=
+      `\n\nWEBSITE EPISODES DATABASE (live, read-only snapshot, ${rows.length} episodes). You can read this to answer questions about what is on the website, e.g. which episodes use Dailymotion/YouTube/Rumble URLs, which have an empty server, or which are missing. You can only read it; to add an episode use create_episode.\n` +
+      lines.join("\n");
+  } catch (err) {
+    logger.error({ err }, "Could not load episodes for Jerin context");
+  }
 
   const parts: any[] = [];
   if (message && message.trim()) parts.push({ text: message });
