@@ -72,8 +72,8 @@ export function VideoModal({
       keyRef.current += 1;
       const key = keyRef.current;
       if (!last || !dir) return [{ key, id: episodeId, anim: "none" }];
-      const outs: Panel[] = live.map((p) => ({ ...p, anim: dir === "next" ? "out-left" : "out-right" }));
-      return [...outs, { key, id: episodeId, anim: dir === "next" ? "in-right" : "in-left" }];
+      const outs: Panel[] = live.map((p) => ({ ...p, anim: dir === "next" ? "out-right" : "out-left" }));
+      return [...outs, { key, id: episodeId, anim: dir === "next" ? "in-left" : "in-right" }];
     });
   }, [episodeId]);
 
@@ -82,7 +82,7 @@ export function VideoModal({
     if (!busy) return;
     const t = setTimeout(() => {
       setPanels((prev) => prev.filter((p) => !p.anim.startsWith("out")).map((p) => ({ ...p, anim: "none" as PanelAnim })));
-    }, 900);
+    }, 1400);
     return () => clearTimeout(t);
   }, [busy, panels.length]);
 
@@ -265,10 +265,10 @@ function PlayerPanel({
         <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-y-auto md:overflow-hidden custom-scrollbar">
           
           {/* Main Left Column: Video + Reactions */}
-          <div className="flex-none md:flex-1 flex flex-col md:overflow-y-auto custom-scrollbar">
+          <div className="contents md:flex md:flex-1 md:flex-col md:overflow-y-auto custom-scrollbar">
             
             {/* Player Wrapper */}
-            <div className="w-full bg-black aspect-video relative flex-shrink-0">
+            <div className="w-full bg-black aspect-video relative flex-shrink-0 sticky top-0 z-20 md:static md:z-auto">
               {(!primaryUrl && !backupUrl) ? (
                 <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
                   Video not available

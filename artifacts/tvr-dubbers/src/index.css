@@ -464,14 +464,16 @@ html:not(.dark) .liquid-pill.liquid-pill-active.liquid-raised {
 
 /* Episode pop-up transitions (see components/video-modal.tsx): the old pop-up
    slides off one side while the new one slides in from the other. */
-@keyframes pvInLeft { from { transform: translateX(-120vw); } to { transform: translateX(0); } }
-@keyframes pvInRight { from { transform: translateX(120vw); } to { transform: translateX(0); } }
-@keyframes pvOutLeft { from { transform: translateX(0); } to { transform: translateX(-120vw); } }
-@keyframes pvOutRight { from { transform: translateX(0); } to { transform: translateX(120vw); } }
-.pv-in-left { animation: pvInLeft 0.6s cubic-bezier(0.45, 0, 0.2, 1) both; }
-.pv-in-right { animation: pvInRight 0.6s cubic-bezier(0.45, 0, 0.2, 1) both; }
-.pv-out-left { animation: pvOutLeft 0.6s cubic-bezier(0.45, 0, 0.2, 1) both; }
-.pv-out-right { animation: pvOutRight 0.6s cubic-bezier(0.45, 0, 0.2, 1) both; }
+/* Episode swap: the old pop-up slides one way while shrinking, the new one
+   slides in from the other side while growing back to full size. */
+@keyframes pvInLeft { from { transform: translateX(-105vw) scale(0.6); opacity: 0.3; } to { transform: translateX(0) scale(1); opacity: 1; } }
+@keyframes pvInRight { from { transform: translateX(105vw) scale(0.6); opacity: 0.3; } to { transform: translateX(0) scale(1); opacity: 1; } }
+@keyframes pvOutLeft { from { transform: translateX(0) scale(1); opacity: 1; } to { transform: translateX(-105vw) scale(0.6); opacity: 0.3; } }
+@keyframes pvOutRight { from { transform: translateX(0) scale(1); opacity: 1; } to { transform: translateX(105vw) scale(0.6); opacity: 0.3; } }
+.pv-in-left { animation: pvInLeft 0.9s cubic-bezier(0.65, 0, 0.25, 1) both; }
+.pv-in-right { animation: pvInRight 0.9s cubic-bezier(0.65, 0, 0.25, 1) both; }
+.pv-out-left { animation: pvOutLeft 0.9s cubic-bezier(0.65, 0, 0.25, 1) both; }
+.pv-out-right { animation: pvOutRight 0.9s cubic-bezier(0.65, 0, 0.25, 1) both; }
 @media (prefers-reduced-motion: reduce) {
   .pv-in-left, .pv-in-right, .pv-out-left, .pv-out-right { animation: none; }
   .pv-out-left, .pv-out-right { display: none; }
