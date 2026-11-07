@@ -1,43 +1,18 @@
-import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 interface RevealProps {
   children: ReactNode;
   className?: string;
-  /** stagger delay in ms, applied once the element scrolls into view */
+  /** kept for call-site compatibility; there is no scroll animation anymore */
   delay?: number;
   id?: string;
 }
 
-// Scroll-triggered reveal wrapper: starts hidden/blurred (see .reveal in
-// index.css) and animates in the first time it enters the viewport.
-export function Reveal({ children, className = "", delay = 0, id }: RevealProps) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          el.classList.add("revealed");
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.1, rootMargin: "0px 0px -40px 0px" }
-    );
-
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
+// Plain section wrapper. It used to fade/blur/slide content in on scroll; that
+// was removed so scrolling stays a smooth glide with nothing animating in.
+export function Reveal({ children, className = "", id }: RevealProps) {
   return (
-    <div
-      ref={ref}
-      id={id}
-      className={`reveal ${className}`}
-      style={{ "--reveal-delay": `${delay}ms` } as CSSProperties}
-    >
+    <div id={id} className={className}>
       {children}
     </div>
   );
