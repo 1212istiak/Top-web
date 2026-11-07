@@ -125,7 +125,7 @@ export function VideoModal({
         </DialogDescription>
         
         {/* Header */}
-        <div className="p-4 border-b border-border flex justify-between items-center bg-black/90">
+        <div className="p-4 pr-16 border-b border-border flex justify-between items-center bg-black/90">
           <div>
             <h2 className="text-xl font-display font-bold text-white flex items-center gap-3">
               <span className="bg-primary/20 text-primary px-2 py-0.5 rounded text-sm">
@@ -161,8 +161,8 @@ export function VideoModal({
               <div className="flex items-center justify-between">
                 <Tabs value={server} onValueChange={(v) => setServer(v as "primary" | "backup")} className="w-[300px]">
                   <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="primary" disabled={!primaryUrl}>Server 1</TabsTrigger>
-                    <TabsTrigger value="backup" disabled={!backupUrl}>Server 2</TabsTrigger>
+                    <TabsTrigger value="primary" disabled={!primaryUrl} className={server === "primary" ? "liquid-pill liquid-static rounded-md" : ""}>Server 1</TabsTrigger>
+                    <TabsTrigger value="backup" disabled={!backupUrl} className={server === "backup" ? "liquid-pill liquid-static rounded-md" : ""}>Server 2</TabsTrigger>
                   </TabsList>
                 </Tabs>
                 
@@ -207,7 +207,7 @@ export function VideoModal({
           </div>
 
           {/* Right Column: Comments */}
-          <div className="w-full md:w-[350px] border-t md:border-t-0 md:border-l border-border bg-black/20 flex flex-col h-[50vh] md:h-auto">
+          <div className="w-full md:w-[350px] border-t md:border-t-0 md:border-l border-border liquid-pane flex flex-col h-[50vh] md:h-auto">
             <div className="p-4 border-b border-border/50 shrink-0">
               <h3 className="font-display font-semibold flex items-center gap-2">
                 Comments 
@@ -222,7 +222,7 @@ export function VideoModal({
                 </div>
               ) : (
                 comments?.map((comment) => (
-                  <div key={comment.id} className="bg-white/5 rounded-lg p-3 text-sm">
+                  <div key={comment.id} className="bg-white/30 dark:bg-white/5 border border-white/30 dark:border-white/5 rounded-lg p-3 text-sm">
                     <div className="flex items-baseline justify-between mb-1">
                       <span className="font-semibold text-cyan-300">{comment.nickname}</span>
                       <span className="text-xs text-muted-foreground">
@@ -235,26 +235,26 @@ export function VideoModal({
               )}
             </div>
 
-            <div className="p-4 border-t border-border/50 bg-black/90 shrink-0">
+            <div className="p-4 border-t border-border/50 shrink-0">
               <form onSubmit={handleCommentSubmit} className="space-y-3">
                 <Input 
                   placeholder="Nickname (optional)" 
                   value={nickname}
                   onChange={(e) => setNickname(e.target.value)}
-                  className="bg-white/5 border-white/10"
+                  className="bg-white/40 dark:bg-white/5 border-slate-300/60 dark:border-white/10"
                   maxLength={30}
                 />
                 <textarea 
                   placeholder="Add a comment..."
                   value={commentBody}
                   onChange={(e) => setCommentBody(e.target.value)}
-                  className="w-full h-20 bg-white/5 border border-white/10 rounded-md p-2 text-sm resize-none focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all custom-scrollbar"
+                  className="w-full h-20 bg-white/40 dark:bg-white/5 border border-slate-300/60 dark:border-white/10 rounded-md p-2 text-sm resize-none focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all custom-scrollbar"
                   maxLength={500}
                 />
                 <Button 
                   type="submit" 
                   disabled={!commentBody.trim() || createComment.isPending}
-                  className="w-full bg-cyan-600 hover:bg-cyan-500 text-white"
+                  className="w-full rounded-full liquid-pill liquid-pill-active liquid-light-dark text-white"
                 >
                   Post Comment
                 </Button>

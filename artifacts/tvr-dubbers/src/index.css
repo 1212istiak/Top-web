@@ -194,13 +194,13 @@
 
 .liquid-tile,
 .liquid-pill {
-  --lg-tile-bg: linear-gradient(145deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.38) 50%, rgba(255, 255, 255, 0.55));
+  --lg-tile-bg: linear-gradient(145deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.12) 50%, rgba(255, 255, 255, 0.26));
   --lg-pill-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.44));
   --lg-pill-bg-hover: linear-gradient(160deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.6));
   --lg-light: rgba(30, 41, 59, 0.75);
   --lg-light-mid: rgba(30, 41, 59, 0.38);
   --lg-rim: rgba(100, 116, 139, 0.12);
-  --lg-edge: inset 0 0 0 2.5px rgba(255, 255, 255, 0.6);
+  --lg-edge: inset 0 0 0 2.5px rgba(255, 255, 255, 0.28);
   --lg-drop: 0 12px 28px -10px rgba(15, 23, 42, 0.22);
   --lg-drop-hover: 0 22px 40px -12px rgba(15, 23, 42, 0.3);
   --lg-pill-drop: 0 6px 14px -6px rgba(15, 23, 42, 0.25);
@@ -255,6 +255,17 @@
   animation: lgOrbit 24s linear infinite;
 }
 .liquid-pill { --lg-start: 68deg; }
+
+/* Flat translucent panel with the same material as the tiles but no orbiting
+   rim (side panels inside dialogs). */
+.liquid-pane {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.12) 50%, rgba(255, 255, 255, 0.26));
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  backdrop-filter: blur(28px) saturate(170%);
+}
+.dark .liquid-pane {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04) 48%, rgba(255, 255, 255, 0.09));
+}
 .liquid-pill::before { animation-duration: 6s; }
 .liquid-lap-lg::before { animation-duration: 30s; }
 
@@ -296,8 +307,8 @@
 
 .liquid-tile {
   background: var(--lg-tile-bg);
-  -webkit-backdrop-filter: blur(22px) saturate(180%);
-  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  backdrop-filter: blur(28px) saturate(170%);
   box-shadow: var(--lg-edge), var(--lg-drop);
   transition:
     transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
@@ -341,6 +352,12 @@
     inset 0 0 0 2.5px rgba(255, 255, 255, 0.14),
     0 0 18px rgba(34, 211, 238, 0.32),
     var(--lg-pill-drop);
+}
+/* Dark travelling light (for buttons that should show a dark streak) */
+.liquid-pill.liquid-light-dark,
+.dark .liquid-pill.liquid-light-dark {
+  --lg-light: rgba(15, 23, 42, 0.85);
+  --lg-light-mid: rgba(15, 23, 42, 0.42);
 }
 
 @media (hover: hover) and (pointer: fine) {
