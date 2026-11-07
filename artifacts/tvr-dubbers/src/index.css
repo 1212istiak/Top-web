@@ -199,7 +199,7 @@
   --lg-pill-bg-hover: linear-gradient(160deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.6));
   --lg-light: rgba(30, 41, 59, 0.75);
   --lg-light-mid: rgba(30, 41, 59, 0.38);
-  --lg-rim: rgba(100, 116, 139, 0.22);
+  --lg-rim: rgba(100, 116, 139, 0.12);
   --lg-edge: inset 0 0 0 2.5px rgba(255, 255, 255, 0.6);
   --lg-drop: 0 12px 28px -10px rgba(15, 23, 42, 0.22);
   --lg-drop-hover: 0 22px 40px -12px rgba(15, 23, 42, 0.3);
@@ -218,8 +218,8 @@
   --lg-pill-bg-hover: linear-gradient(160deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.08));
   --lg-light: #fff;
   --lg-light-mid: rgba(255, 255, 255, 0.42);
-  --lg-rim: rgba(255, 255, 255, 0.26);
-  --lg-edge: inset 0 0 0 2.5px rgba(255, 255, 255, 0.08);
+  --lg-rim: rgba(255, 255, 255, 0.12);
+  --lg-edge: inset 0 0 0 2.5px rgba(255, 255, 255, 0.04);
   --lg-drop: 0 14px 32px -10px rgba(0, 0, 0, 0.7);
   --lg-drop-hover: 0 24px 44px -12px rgba(0, 0, 0, 0.8);
   --lg-pill-drop: 0 6px 14px -6px rgba(0, 0, 0, 0.7);
@@ -273,9 +273,9 @@
   .liquid-tile::before,
   .liquid-pill::before {
     --lg-angle: calc(var(--lg-phase) + var(--lg-a) * 57.2958deg / var(--lg-n) * sin(var(--lg-n) * var(--lg-phase)));
-    --lg-s: calc((1 + cos(var(--lg-angle) * 4)) / 2);
-    --lg-L: calc(9deg * (1 + 1.2 * var(--lg-s)));
-    --lg-T: calc(1 + 3 * var(--lg-s));
+    --lg-s: calc((1 + cos(var(--lg-n) * (var(--lg-angle) + 12deg))) / 2);
+    --lg-L: calc(9deg + 8deg * var(--lg-s));
+    --lg-T: calc(1 + 2.4 * var(--lg-s));
     --lg-c1: color-mix(in srgb, var(--lg-light) calc(100% - 88% * var(--lg-s)), var(--lg-rim));
     --lg-c2: color-mix(in srgb, var(--lg-light-mid) calc(100% - 95% * var(--lg-s)), var(--lg-rim));
     background: conic-gradient(
@@ -334,7 +334,7 @@
 .liquid-pill.liquid-pill-active {
   --lg-light: #fff;
   --lg-light-mid: rgba(255, 255, 255, 0.5);
-  --lg-rim: rgba(207, 250, 254, 0.7);
+  --lg-rim: rgba(207, 250, 254, 0.4);
   background: linear-gradient(160deg, rgba(34, 211, 238, 0.9), rgba(8, 145, 178, 0.78));
   color: #fff;
   box-shadow:
