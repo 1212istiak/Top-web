@@ -113,12 +113,12 @@ export function Navbar() {
 
             {/* Search Bar */}
             <div className="relative hidden md:block w-64 group">
-              <div className="relative">
+              <div className="relative liquid-pill liquid-static rounded-full">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input 
                   type="text" 
                   placeholder="Search donghua..." 
-                  className="pl-9 liquid-pill liquid-static rounded-full"
+                  className="pl-9 rounded-full bg-transparent border-0 shadow-none focus-visible:ring-0"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onFocus={() => setIsSearchFocused(true)}
@@ -172,13 +172,13 @@ export function Navbar() {
         {/* Mobile Search Expandable Row */}
         {showMobileSearch && (
           <div className="md:hidden border-t border-white/5 px-4 py-3">
-            <div className="relative">
+            <div className="relative liquid-pill liquid-static rounded-full">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input 
                 type="text" 
                 placeholder="Search donghua..." 
                 autoFocus
-                className="pl-9 liquid-pill liquid-static rounded-full"
+                className="pl-9 rounded-full bg-transparent border-0 shadow-none focus-visible:ring-0"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => setIsSearchFocused(true)}
