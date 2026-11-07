@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Search, Lock } from "lucide-react";
+import { Search, Lock, Sun, Moon } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useGetSettings, useListEpisodes, useAdminLogin, getListEpisodesQueryKey } from "@workspace/api-client-react";
@@ -161,7 +161,13 @@ export function Navbar() {
               <Switch 
                 checked={theme === "dark"} 
                 onCheckedChange={toggleTheme}
-                className="data-[state=checked]:bg-cyan-600"
+                className="h-6 w-11 data-[state=checked]:bg-cyan-600"
+                thumbClassName="flex h-5 w-5 items-center justify-center data-[state=checked]:translate-x-5"
+                thumbIcon={
+                  theme === "dark"
+                    ? <Moon className="h-3 w-3 text-white" fill="currentColor" strokeWidth={1.5} />
+                    : <Sun className="h-3.5 w-3.5 text-black" fill="currentColor" strokeWidth={2.4} />
+                }
               />
               <span className="text-xs font-medium text-foreground hidden sm:inline-block">Dark</span>
             </div>

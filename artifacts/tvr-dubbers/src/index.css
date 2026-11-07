@@ -462,6 +462,21 @@ html:not(.dark) .liquid-pill.liquid-pill-active.liquid-raised {
   opacity: 1;
 }
 
+/* Episode pop-up transitions (see components/video-modal.tsx): the old pop-up
+   slides off one side while the new one slides in from the other. */
+@keyframes pvInLeft { from { transform: translateX(-120vw); } to { transform: translateX(0); } }
+@keyframes pvInRight { from { transform: translateX(120vw); } to { transform: translateX(0); } }
+@keyframes pvOutLeft { from { transform: translateX(0); } to { transform: translateX(-120vw); } }
+@keyframes pvOutRight { from { transform: translateX(0); } to { transform: translateX(120vw); } }
+.pv-in-left { animation: pvInLeft 0.6s cubic-bezier(0.45, 0, 0.2, 1) both; }
+.pv-in-right { animation: pvInRight 0.6s cubic-bezier(0.45, 0, 0.2, 1) both; }
+.pv-out-left { animation: pvOutLeft 0.6s cubic-bezier(0.45, 0, 0.2, 1) both; }
+.pv-out-right { animation: pvOutRight 0.6s cubic-bezier(0.45, 0, 0.2, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .pv-in-left, .pv-in-right, .pv-out-left, .pv-out-right { animation: none; }
+  .pv-out-left, .pv-out-right { display: none; }
+}
+
 /* Custom cursor: hide the native pointer on real desktop mice so only the
    dot + ring from CursorEffects is visible. Left untouched on touch devices. */
 @media (hover: hover) and (pointer: fine) {

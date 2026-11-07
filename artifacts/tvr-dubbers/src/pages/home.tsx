@@ -7,9 +7,10 @@ import {
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { VideoModal } from "@/components/video-modal";
+import { SpecialPlaylist } from "@/components/special-playlist";
 import { TrailerModal } from "@/components/trailer-modal";
 import { Button } from "@/components/ui/button";
-import { Play, Calendar, FolderOpen, X } from "lucide-react";
+import { Play, Calendar, FolderOpen } from "lucide-react";
 import { format, differenceInSeconds } from "date-fns";
 import { SparkleBackground } from "@/components/sparkle-background";
 import { CursorEffects } from "@/components/cursor-effects";
@@ -108,15 +109,17 @@ export function Home() {
     e.currentTarget.style.setProperty("--my", `${e.clientY - rect.top}px`);
   };
 
-  const handleNextEpisode = (currentId: number) => {
-    if (!allEpisodes) return;
-    const currentIndex = allEpisodes.findIndex(ep => ep.id === currentId);
-    if (currentIndex !== -1 && currentIndex > 0) {
-      // Assuming episodes are sorted newest first, so next episode is index - 1
-      // Wait, usually list is newest first, so the "next" episode to watch is the older one? 
-      // Actually, standard is index - 1 is newer, index + 1 is older. Next episode implies newer.
-      setActiveEpisodeId(allEpisodes[currentIndex - 1].id);
-    }
+  // Previous/next inside the list the episode belongs to (special episodes
+  // navigate among themselves). The list is newest first, so "next" is the
+  // entry before it and "previous" the entry after it.
+  const getNeighbors = (id: number) => {
+    const list = specialEpisodes?.some((e) => e.id === id) ? specialEpisodes : regularEpisodes;
+    const i = list.findIndex((e) => e.id === id);
+    if (i === -1) return { prev: null, next: null };
+    return {
+      next: i > 0 ? list[i - 1].id : null,
+      prev: i < list.length - 1 ? list[i + 1].id : null,
+    };
   };
 
   const latestEpisode = regularEpisodes[0];
@@ -220,7 +223,7 @@ export function Home() {
             {/* 16:9 Special Banner Tile */}
             {settings?.specialFolderThumbnail && (
               <div className="mb-6 liquid-tile liquid-lap-lg rounded-3xl overflow-hidden relative group cursor-pointer spotlight p-2.5 md:p-3"
-                onClick={() => specialEpisodes[0] && setActiveEpisodeId(specialEpisodes[0].id)}
+                onClick={() => setShowSpecialModal(true)}
                 onMouseMove={handleSpotlightMove}
               >
                 <div className="liquid-thumb relative overflow-hidden rounded-2xl" style={{ aspectRatio: "16/9" }}>
@@ -383,7 +386,8 @@ export function Home() {
       <VideoModal 
         episodeId={activeEpisodeId} 
         onClose={() => setActiveEpisodeId(null)} 
-        onNextEpisode={handleNextEpisode}
+        onNavigate={setActiveEpisodeId}
+        getNeighbors={getNeighbors}
       />
 
       <TrailerModal
@@ -395,50 +399,16 @@ export function Home() {
         backupServerUrl={trailer?.backupServerUrl}
       />
 
-      {/* FULLSCREEN SPECIAL FOLDER MODAL */}
-      {showSpecialModal && (
-        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-2xl animate-in fade-in duration-300 flex flex-col">
-          <div className="p-6 border-b border-white/10 flex justify-between items-center bg-black/50 sticky top-0 z-10">
-            <div>
-              <h2 className="text-3xl font-display font-bold text-white flex items-center gap-3">
-                <FolderOpen className="text-cyan-400" />
-                {settings?.specialFolderLabel || "Special Collection"}
-              </h2>
-              <p className="text-cyan-400/80 mt-1">All Special Episodes</p>
-            </div>
-            <button 
-              onClick={() => setShowSpecialModal(false)}
-              className="p-3 liquid-pill liquid-dark text-white hover:text-red-400 rounded-full"
-            >
-              <X className="h-6 w-6" />
-            </button>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto p-6 md:p-12 custom-scrollbar">
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 max-w-[1600px] mx-auto">
-              {specialEpisodes?.map(ep => (
-                <div
-                  key={ep.id}
-                  className="group relative liquid-tile liquid-dark rounded-3xl overflow-hidden cursor-pointer p-2"
-                  onClick={() => {
-                    setActiveEpisodeId(ep.id);
-                    setShowSpecialModal(false);
-                  }}
-                >
-                  <div className="liquid-thumb relative aspect-[3/4] rounded-2xl overflow-hidden">
-                    <LazyImage src={ep.thumbnailUrl || ""} alt={ep.title} className="h-full w-full object-cover" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent opacity-90"></div>
-                    <div className="absolute bottom-0 left-0 p-4 w-full">
-                      <p className="text-sm font-bold text-cyan-400 mb-1 tracking-widest uppercase">EP {ep.episodeNumber}</p>
-                      <p className="text-base font-semibold text-white leading-tight group-hover:text-cyan-300 transition-colors">{ep.title}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* SPECIAL EPISODES PLAYLIST POP-UP */}
+      <SpecialPlaylist
+        open={showSpecialModal}
+        onClose={() => setShowSpecialModal(false)}
+        episodes={specialEpisodes ?? []}
+        onSelect={(id) => {
+          setShowSpecialModal(false);
+          setActiveEpisodeId(id);
+        }}
+      />
     </div>
   );
 }
