@@ -249,7 +249,7 @@ export function Home() {
               {specialEpisodes.slice(0, 6).map((ep) => (
                 <div
                   key={ep.id}
-                  className="group relative liquid-tile rounded-2xl overflow-hidden cursor-pointer spotlight p-1.5"
+                  className="group relative liquid-tile liquid-wide rounded-2xl overflow-hidden cursor-pointer spotlight p-1.5"
                   onClick={() => setActiveEpisodeId(ep.id)}
                   onMouseMove={handleSpotlightMove}
                 >

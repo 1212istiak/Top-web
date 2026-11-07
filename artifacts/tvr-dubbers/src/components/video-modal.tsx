@@ -174,7 +174,7 @@ export function VideoModal({
               </div>
 
               {/* Reactions */}
-              <div className="space-y-3 p-4 rounded-2xl liquid-tile liquid-static">
+              <div className="space-y-3 p-4 rounded-2xl liquid-tile liquid-wide liquid-static">
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Reactions</h3>
                 <div className="flex flex-wrap gap-3">
                   {(["👍", "❤️", "👎", "🔥", "😥", "😹", "💀"] as ReactionInputReactionType[]).map((emoji) => {
