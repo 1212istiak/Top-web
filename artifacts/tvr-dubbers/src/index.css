@@ -193,6 +193,7 @@
   --lg-pill-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.44));
   --lg-pill-bg-hover: linear-gradient(160deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.6));
   --lg-light: rgba(30, 41, 59, 0.75);
+  --lg-light-mid: rgba(30, 41, 59, 0.38);
   --lg-rim: rgba(100, 116, 139, 0.22);
   --lg-edge: inset 0 0 0 2.5px rgba(255, 255, 255, 0.6);
   --lg-drop: 0 12px 28px -10px rgba(15, 23, 42, 0.22);
@@ -209,6 +210,7 @@
   --lg-pill-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.04));
   --lg-pill-bg-hover: linear-gradient(160deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.08));
   --lg-light: #fff;
+  --lg-light-mid: rgba(255, 255, 255, 0.42);
   --lg-rim: rgba(255, 255, 255, 0.26);
   --lg-edge: inset 0 0 0 2.5px rgba(255, 255, 255, 0.08);
   --lg-drop: 0 14px 32px -10px rgba(0, 0, 0, 0.7);
@@ -228,10 +230,13 @@
   pointer-events: none;
   background: conic-gradient(
     from var(--lg-angle),
-    var(--lg-light) 0deg,
+    var(--lg-rim) 0deg,
+    var(--lg-light) 9deg,
+    var(--lg-light-mid) 20deg,
     var(--lg-rim) 70deg,
     var(--lg-rim) 180deg,
-    var(--lg-light) 180deg,
+    var(--lg-light) 189deg,
+    var(--lg-light-mid) 200deg,
     var(--lg-rim) 250deg,
     var(--lg-rim) 360deg
   );
@@ -239,9 +244,11 @@
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask-composite: exclude;
-  animation: lgOrbit 6s linear infinite;
+  animation: lgOrbit 12s linear infinite;
 }
 .liquid-pill { --lg-start: 68deg; }
+.liquid-pill::before { animation-duration: 6s; }
+.liquid-lap-lg::before { animation-duration: 18s; }
 
 .liquid-tile {
   background: var(--lg-tile-bg);
@@ -282,6 +289,7 @@
 /* Selected / primary pill: cyan-tinted glass */
 .liquid-pill.liquid-pill-active {
   --lg-light: #fff;
+  --lg-light-mid: rgba(255, 255, 255, 0.5);
   --lg-rim: rgba(207, 250, 254, 0.7);
   background: linear-gradient(160deg, rgba(34, 211, 238, 0.9), rgba(8, 145, 178, 0.78));
   color: #fff;

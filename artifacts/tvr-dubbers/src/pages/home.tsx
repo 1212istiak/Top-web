@@ -168,7 +168,7 @@ export function Home() {
         {/* COUNTDOWN TIMER */}
         <Reveal className="mb-24" delay={100}>
         <section className="flex justify-center">
-          <div className="liquid-tile liquid-static p-6 md:p-10 rounded-3xl relative overflow-hidden group max-w-3xl w-full text-center">
+          <div className="liquid-tile liquid-lap-lg liquid-static p-6 md:p-10 rounded-3xl relative overflow-hidden group max-w-3xl w-full text-center">
             <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-purple-500/10 opacity-50"></div>
             
             <h3 className="text-sm font-display uppercase tracking-widest text-muted-foreground mb-6">Next Episode Drops In</h3>
@@ -219,7 +219,7 @@ export function Home() {
             
             {/* 16:9 Special Banner Tile */}
             {settings?.specialFolderThumbnail && (
-              <div className="mb-6 liquid-tile rounded-3xl overflow-hidden relative group cursor-pointer spotlight p-2.5 md:p-3"
+              <div className="mb-6 liquid-tile liquid-lap-lg rounded-3xl overflow-hidden relative group cursor-pointer spotlight p-2.5 md:p-3"
                 onClick={() => specialEpisodes[0] && setActiveEpisodeId(specialEpisodes[0].id)}
                 onMouseMove={handleSpotlightMove}
               >
