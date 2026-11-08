@@ -101,14 +101,72 @@ function pickVoice(): SpeechSynthesisVoice | undefined {
   return voices.find((v) => v.lang.toLowerCase().startsWith("bn")) || undefined;
 }
 
-function speak(text: string, muted: boolean) {
-  if (muted || !("speechSynthesis" in window)) return;
+// Phone/browser voice — only used as a fallback if ElevenLabs fails
+function speakWithBrowser(text: string) {
+  if (!("speechSynthesis" in window)) return;
   window.speechSynthesis.cancel();
-  const utter = new SpeechSynthesisUtterance(cleanForSpeech(text));
+  const utter = new SpeechSynthesisUtterance(text);
   utter.rate = 1.0;
   const voice = pickVoice();
   if (voice) utter.voice = voice;
   window.speechSynthesis.speak(utter);
+}
+
+// One shared <audio> element so mobile browsers keep allowing playback after the
+// first tap (autoplay policies block brand-new Audio() objects that start later).
+let jerinAudio: HTMLAudioElement | null = null;
+let jerinAudioUrl: string | null = null;
+let speakToken = 0;
+
+function getJerinAudio(): HTMLAudioElement {
+  if (!jerinAudio) jerinAudio = new Audio();
+  return jerinAudio;
+}
+
+// Call from a user gesture (mic tap, send, replay) to unlock audio playback on mobile
+function unlockJerinAudio() {
+  const a = getJerinAudio();
+  if (a.dataset.unlocked) return;
+  a.dataset.unlocked = "1";
+  a.src = "data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQxAADB8AhSmxhIIEVCSiJrDCQBTcu3UrAEwUAAAAAAAAAAAAAAAAA";
+  a.play().catch(() => {});
+}
+
+function stopSpeaking() {
+  speakToken++;
+  if (jerinAudio) { jerinAudio.pause(); jerinAudio.removeAttribute("src"); }
+  if (jerinAudioUrl) { URL.revokeObjectURL(jerinAudioUrl); jerinAudioUrl = null; }
+  if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+}
+
+async function speak(text: string, muted: boolean) {
+  if (muted) return;
+  stopSpeaking();
+  const myToken = speakToken;
+  const clean = cleanForSpeech(text);
+  if (!clean) return;
+
+  try {
+    const token = localStorage.getItem("tvr_admin_token");
+    const res = await fetch(`${API_BASE}/api/rocky/tts`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ text: clean }),
+    });
+    if (!res.ok) throw new Error(`TTS ${res.status}`);
+    const blob = await res.blob();
+    if (myToken !== speakToken) return; // user muted / started something newer while loading
+
+    jerinAudioUrl = URL.createObjectURL(blob);
+    const audio = getJerinAudio();
+    audio.src = jerinAudioUrl;
+    await audio.play();
+  } catch {
+    if (myToken === speakToken) speakWithBrowser(clean);
+  }
 }
 
 function getSpeechRecognition(): any {
@@ -275,6 +333,7 @@ function VoiceChatPanel({ model, thinking }: { model: GeminiModel; thinking: boo
 
   const send = async (text: string) => {
     if (!text.trim() || isLoading) return;
+    unlockJerinAudio();
     setMessages((m) => [...m, { role: "user", text }]);
     setInput("");
     setIsLoading(true);
@@ -334,6 +393,7 @@ function VoiceChatPanel({ model, thinking }: { model: GeminiModel; thinking: boo
   };
 
   const toggleListening = () => {
+    unlockJerinAudio();
     if (isListening) { recognitionRef.current?.stop(); setIsListening(false); return; }
     const recognition = getSpeechRecognition();
     if (!recognition) {
@@ -354,7 +414,7 @@ function VoiceChatPanel({ model, thinking }: { model: GeminiModel; thinking: boo
     <div className="space-y-4 max-w-2xl">
       <div className="flex justify-end">
         <Button type="button" variant="ghost" size="sm"
-          onClick={() => { const next = !muted; setMuted(next); if (next) window.speechSynthesis?.cancel(); }}
+          onClick={() => { const next = !muted; setMuted(next); if (next) stopSpeaking(); else unlockJerinAudio(); }}
           className="text-muted-foreground hover:text-cyan-400"
         >
           {muted ? <VolumeX className="h-4 w-4 mr-1" /> : <Volume2 className="h-4 w-4 mr-1" />}
@@ -375,7 +435,7 @@ function VoiceChatPanel({ model, thinking }: { model: GeminiModel; thinking: boo
               {m.text}
               {m.role === "rocky" && (
                 <div className="mt-1.5 pt-1.5 border-t border-white/5">
-                  <button onClick={() => speak(m.text, false)} className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 text-xs">
+                  <button onClick={() => { unlockJerinAudio(); speak(m.text, false); }} className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 text-xs">
                     <Volume2 className="h-3.5 w-3.5" /> Replay
                   </button>
                 </div>

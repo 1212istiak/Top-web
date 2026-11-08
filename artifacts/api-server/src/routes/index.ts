@@ -9,6 +9,7 @@ import voiceArtistsRouter from "./voice-artists";
 import adminRouter from "./admin";
 import rockyRouter from "./rocky";
 import rockyPublishRouter from "./rocky-publish";
+import rockyTtsRouter from "./rocky-tts";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(voiceArtistsRouter);
 router.use(adminRouter);
 router.use(rockyRouter);
 router.use(rockyPublishRouter);
+router.use(rockyTtsRouter);
 
 export default router;
