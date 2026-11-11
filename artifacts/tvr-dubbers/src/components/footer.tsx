@@ -1,7 +1,79 @@
+import { useState } from "react";
 import { useGetSettings, useListVoiceArtists } from "@workspace/api-client-react";
 import { FaFacebook, FaYoutube, FaTelegram, FaWhatsapp, FaInstagram, FaPlay, FaVideo } from "react-icons/fa";
 import { SiRumble, SiDailymotion } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
+import { Switch } from "@/components/ui/switch";
+
+type Lang = "en" | "bn";
+
+const ABOUT_TEXT: Record<Lang, { heading: string; body: string }> = {
+  en: {
+    heading: "Battle Through the Heavens in Bangla Dub",
+    body:
+      "TVR Dubbers (The Voice of Rockstar'z) is a fan-made Bangla dubbing group bringing the Chinese donghua Battle Through the Heavens (BTTH), also known as Doupo Cangqiong, to Bengali-speaking audiences. Follow Xiao Yan's struggle and rise, voiced, directed and edited with care by a team that believes in quality. Watch BTTH in Bangla dub, made by the fans, for the fans.",
+  },
+  bn: {
+    heading: "ব্যাটল থ্রু দ্য হেভেনস বাংলা ডাব",
+    body:
+      "টিভিআর ডাবার্স (দ্য ভয়েস অফ রকস্টার'জ) ভক্তদের তৈরি একটি বাংলা ডাবিং গ্রুপ, যারা বাংলাভাষী দর্শকদের জন্য চাইনিজ ডনহুয়া ব্যাটল থ্রু দ্য হেভেনস (BTTH), যা ডৌপো ক্যাংকিয়ং নামেও পরিচিত, বাংলা ডাবে নিয়ে এসেছে। জিয়াও ইয়ানের লড়াই আর উত্থানের গল্প দেখুন এমন একটি দলের কণ্ঠে ও যত্নে, যারা বিশ্বাস করে মানের কোনো বিকল্প নেই। BTTH বাংলা ডাব দেখুন, ভক্তদের জন্য, ভক্তদের হাতে তৈরি।",
+  },
+};
+
+// Both languages are always in the page HTML (one hidden), so search engines can read both.
+function AboutBox() {
+  const [lang, setLang] = useState<Lang>(() => {
+    try {
+      return localStorage.getItem("tvr_lang") === "bn" ? "bn" : "en";
+    } catch {
+      return "en";
+    }
+  });
+
+  const handleChange = (isBengali: boolean) => {
+    const next: Lang = isBengali ? "bn" : "en";
+    setLang(next);
+    try {
+      localStorage.setItem("tvr_lang", next);
+    } catch {
+      /* storage unavailable, ignore */
+    }
+  };
+
+  return (
+    <section className="liquid-tile liquid-static rounded-2xl p-6 mb-12 relative">
+      <div className="absolute top-4 right-4">
+        <Switch
+          checked={lang === "bn"}
+          onCheckedChange={handleChange}
+          aria-label="Switch language between English and Bengali"
+          className="h-6 w-11 data-[state=checked]:bg-cyan-600"
+          thumbClassName="flex h-5 w-5 items-center justify-center data-[state=checked]:translate-x-5"
+          thumbIcon={
+            <span className="text-[10px] font-bold leading-none text-foreground">
+              {lang === "bn" ? "B" : "E"}
+            </span>
+          }
+        />
+      </div>
+
+      <div lang="en" hidden={lang !== "en"} className="pr-16 space-y-3">
+        <h2 className="text-lg font-display font-bold text-foreground">{ABOUT_TEXT.en.heading}</h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">{ABOUT_TEXT.en.body}</p>
+      </div>
+
+      <div
+        lang="bn"
+        hidden={lang !== "bn"}
+        className="pr-16 space-y-3"
+        style={{ fontFamily: "'Noto Sans Bengali', 'Inter', sans-serif" }}
+      >
+        <h2 className="text-lg font-bold text-foreground">{ABOUT_TEXT.bn.heading}</h2>
+        <p className="text-sm text-muted-foreground leading-loose">{ABOUT_TEXT.bn.body}</p>
+      </div>
+    </section>
+  );
+}
 
 // Accepts either a full WhatsApp link or a bare phone number typed into the
 // admin panel (e.g. "01950241724") and always returns a proper wa.me link.
@@ -107,6 +179,8 @@ export function Footer() {
             </div>
           </div>
         </div>
+
+        <AboutBox />
 
         <div className="border-t border-border pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
           <p>For the Fans, by The Fans.</p>
