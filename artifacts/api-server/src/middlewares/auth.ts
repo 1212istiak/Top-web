@@ -1,7 +1,18 @@
+import { randomBytes } from "node:crypto";
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "tvr-dubbers-secret-2024";
+function resolveJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET environment variable is required in production");
+  }
+  // Dev only: random per-process secret, so admin sessions reset on restart
+  return randomBytes(32).toString("hex");
+}
+
+const JWT_SECRET = resolveJwtSecret();
 
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   const header = req.headers.authorization;
