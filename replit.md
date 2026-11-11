@@ -31,7 +31,7 @@ Bangla-dubbed donghua streaming website. "We Believe in Quality" — a premium, 
 ## Admin Panel
 
 - Navigate to `/admin` or click the site title **5 times** to reveal the password modal
-- Default password: `rocky@17`
+- Initial password comes from the `ADMIN_INITIAL_PASSWORD` env var on first seed; change it from the admin panel afterwards
 - JWT stored in localStorage as `tvr_admin_token`
 
 ## Architecture decisions
@@ -55,4 +55,3 @@ Bangla-dubbed donghua streaming website. "We Believe in Quality" — a premium, 
 
 - Base theme color: #020408
 - Title: TVR Dubbers (admin-editable)
-- Default admin password: rocky@17

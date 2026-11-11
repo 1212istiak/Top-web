@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import bcrypt from "bcrypt";
 import { eq } from "drizzle-orm";
 import { db, adminTable, settingsTable, voiceArtistsTable, trailerTable } from "@workspace/db";
@@ -5,12 +6,21 @@ import { logger } from "./lib/logger";
 
 export async function seedDatabase(): Promise<void> {
   try {
-    // Seed admin (default password: rocky@17)
+    // Seed admin on first run only. Password comes from ADMIN_INITIAL_PASSWORD;
+    // if it is not set, a random one is generated and logged once.
     const [existingAdmin] = await db.select().from(adminTable).where(eq(adminTable.id, 1));
     if (!existingAdmin) {
-      const passwordHash = await bcrypt.hash("rocky@17", 12);
+      const envPassword = process.env.ADMIN_INITIAL_PASSWORD;
+      const initialPassword = envPassword || randomBytes(12).toString("base64url");
+      const passwordHash = await bcrypt.hash(initialPassword, 12);
       await db.insert(adminTable).values({ id: 1, passwordHash });
-      logger.info("Admin seeded with default password");
+      if (envPassword) {
+        logger.info("Admin seeded from ADMIN_INITIAL_PASSWORD");
+      } else {
+        logger.warn(
+          `ADMIN_INITIAL_PASSWORD not set. Generated one-time admin password: ${initialPassword} (change it in the admin panel)`,
+        );
+      }
     }
 
     // Seed trailer record
