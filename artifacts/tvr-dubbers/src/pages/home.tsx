@@ -135,7 +135,7 @@ export function Home() {
       </a>
       <SparkleBackground />
       <CursorEffects />
-      <Navbar />
+      <Navbar onSelectEpisode={setActiveEpisodeId} />
 
       <main id="main-content" tabIndex={-1} className="container mx-auto px-4 pb-24 focus:outline-none">
         

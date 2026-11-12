@@ -10,7 +10,7 @@ import { useGetSettings, useListEpisodes, useAdminLogin, getListEpisodesQueryKey
 import { useTheme } from "@/hooks/use-theme";
 import { useToast } from "@/hooks/use-toast";
 
-export function Navbar() {
+export function Navbar({ onSelectEpisode }: { onSelectEpisode?: (id: number) => void }) {
   const [clickCount, setClickCount] = useState(0);
   const clickTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const [, setLocation] = useLocation();
@@ -34,6 +34,15 @@ export function Navbar() {
   const searchResults = episodes?.filter(ep => 
     ep.title.toLowerCase().includes(searchQuery.toLowerCase())
   ).slice(0, 5);
+
+  // Tapping a suggestion opens that episode's player, same as tapping its tile.
+  const handleSelectResult = (id: number) => {
+    onSelectEpisode?.(id);
+    setSearchQuery("");
+    setIsSearchFocused(false);
+    setShowMobileSearch(false);
+    (document.activeElement as HTMLElement | null)?.blur();
+  };
 
   const handleTitleClick = () => {
     setClickCount(prev => prev + 1);
@@ -130,12 +139,14 @@ export function Navbar() {
               {isSearchFocused && searchQuery.length > 0 && (
                 <div className="absolute top-full mt-2 w-full bg-card border border-card-border rounded-xl shadow-2xl overflow-hidden glass-card">
                   {searchResults && searchResults.length > 0 ? (
-                    <div className="flex flex-col">
+                    <div className="flex flex-col" onMouseDown={(e) => e.preventDefault()}>
                       {searchResults.map(ep => (
-                        <div 
-                          key={ep.id} 
-                          className="flex items-center gap-3 p-3 hover:bg-white/5 cursor-pointer transition-colors"
-                        >
+                        <button
+                          type="button"
+                          key={ep.id}
+                          onClick={() => handleSelectResult(ep.id)}
+                          className="flex w-full items-center gap-3 p-3 text-left hover:bg-white/5 focus-visible:bg-white/10 focus-visible:outline-none cursor-pointer transition-colors"
+                          >
                           <div className="w-12 h-8 bg-black/40 rounded overflow-hidden flex-shrink-0">
                             {ep.thumbnailUrl && <img src={ep.thumbnailUrl} alt="" className="w-full h-full object-cover" />}
                           </div>
@@ -143,7 +154,7 @@ export function Navbar() {
                             <p className="text-sm font-medium truncate text-foreground">{ep.title}</p>
                             <p className="text-xs text-muted-foreground">EP {ep.episodeNumber}</p>
                           </div>
-                        </div>
+                        </button>
                       ))}
                     </div>
                   ) : (
@@ -195,12 +206,14 @@ export function Navbar() {
             {isSearchFocused && searchQuery.length > 0 && (
               <div className="mt-2 bg-card border border-card-border rounded-xl shadow-2xl overflow-hidden glass-card">
                 {searchResults && searchResults.length > 0 ? (
-                  <div className="flex flex-col">
+                  <div className="flex flex-col" onMouseDown={(e) => e.preventDefault()}>
                     {searchResults.map(ep => (
-                      <div 
-                        key={ep.id} 
-                        className="flex items-center gap-3 p-3 hover:bg-white/5 cursor-pointer transition-colors"
-                      >
+                      <button
+                        type="button"
+                        key={ep.id}
+                        onClick={() => handleSelectResult(ep.id)}
+                        className="flex w-full items-center gap-3 p-3 text-left hover:bg-white/5 focus-visible:bg-white/10 focus-visible:outline-none cursor-pointer transition-colors"
+                        >
                         <div className="w-12 h-8 bg-black/40 rounded overflow-hidden flex-shrink-0">
                           {ep.thumbnailUrl && <img src={ep.thumbnailUrl} alt="" className="w-full h-full object-cover" />}
                         </div>
@@ -208,7 +221,7 @@ export function Navbar() {
                           <p className="text-sm font-medium truncate text-foreground">{ep.title}</p>
                           <p className="text-xs text-muted-foreground">EP {ep.episodeNumber}</p>
                         </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 ) : (
