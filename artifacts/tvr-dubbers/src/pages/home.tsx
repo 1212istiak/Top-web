@@ -15,6 +15,7 @@ import { format, differenceInSeconds } from "date-fns";
 import { SparkleBackground } from "@/components/sparkle-background";
 import { CursorEffects } from "@/components/cursor-effects";
 import { Reveal } from "@/components/reveal";
+import { Faq } from "@/components/faq";
 
 // Reusable IntersectionObserver Image
 function LazyImage({ src, alt, className }: { src: string, alt: string, className?: string }) {
@@ -126,11 +127,17 @@ export function Home() {
 
   return (
     <div className="min-h-screen w-full relative selection:bg-cyan-500/30">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[10000] focus:rounded-full focus:bg-cyan-500 focus:px-5 focus:py-2 focus:text-sm focus:font-semibold focus:text-black"
+      >
+        Skip to content
+      </a>
       <SparkleBackground />
       <CursorEffects />
       <Navbar />
 
-      <main className="container mx-auto px-4 pb-24">
+      <main id="main-content" tabIndex={-1} className="container mx-auto px-4 pb-24 focus:outline-none">
         
         {/* HERO SECTION */}
         <section className="py-20 md:py-32 flex flex-col items-center text-center space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-1000">
@@ -224,6 +231,10 @@ export function Home() {
             {settings?.specialFolderThumbnail && (
               <div className="mb-6 liquid-tile liquid-lap-lg rounded-3xl overflow-hidden relative group cursor-pointer spotlight p-2.5 md:p-3"
                 onClick={() => setShowSpecialModal(true)}
+                role="button"
+                tabIndex={0}
+                aria-label={settings?.specialFolderLabel || "Open special collection"}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowSpecialModal(true); } }}
                 onMouseMove={handleSpotlightMove}
               >
                 <div className="liquid-thumb relative overflow-hidden rounded-2xl" style={{ aspectRatio: "16/9" }}>
@@ -252,8 +263,12 @@ export function Home() {
               {specialEpisodes.slice(0, 6).map((ep) => (
                 <div
                   key={ep.id}
-                  className="group relative liquid-tile liquid-wide rounded-2xl overflow-hidden cursor-pointer spotlight p-1.5"
+                  className="group relative focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400 liquid-tile liquid-wide rounded-2xl overflow-hidden cursor-pointer spotlight p-1.5"
                   onClick={() => setActiveEpisodeId(ep.id)}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Play episode ${ep.episodeNumber}: ${ep.title}`}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setActiveEpisodeId(ep.id); } }}
                   onMouseMove={handleSpotlightMove}
                 >
                   <div className="liquid-thumb relative aspect-video rounded-xl overflow-hidden">
@@ -321,8 +336,12 @@ export function Home() {
                   <div key={ep.id} className="h-full">
                   <div
                     onClick={() => setActiveEpisodeId(ep.id)}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Play episode ${ep.episodeNumber}: ${ep.title}`}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setActiveEpisodeId(ep.id); } }}
                     onMouseMove={handleSpotlightMove}
-                    className="group liquid-tile rounded-3xl overflow-hidden cursor-pointer relative flex flex-col spotlight h-full p-2.5"
+                    className="group focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400 liquid-tile rounded-3xl overflow-hidden cursor-pointer relative flex flex-col spotlight h-full p-2.5"
                   >
                     <div className="liquid-thumb aspect-video relative overflow-hidden rounded-2xl">
                       <LazyImage src={ep.thumbnailUrl || ""} alt={ep.title} />
@@ -378,6 +397,8 @@ export function Home() {
           )}
         </section>
         </Reveal>
+
+        <Faq />
 
       </main>
 

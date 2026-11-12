@@ -1,8 +1,8 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { useGetSettings, useListVoiceArtists } from "@workspace/api-client-react";
 import { FaFacebook, FaYoutube, FaTelegram, FaWhatsapp, FaInstagram, FaPlay, FaVideo } from "react-icons/fa";
 import { SiRumble, SiDailymotion } from "react-icons/si";
-import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 
 type Lang = "en" | "bn";
@@ -96,14 +96,6 @@ export function Footer() {
   const { data: settings } = useGetSettings();
   const { data: voiceArtists } = useListVoiceArtists();
 
-  const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, url?: string | null) => {
-    if (!url) {
-      e.preventDefault();
-      // Show toast
-      alert("Coming Soon");
-    }
-  };
-
   return (
     <footer className="w-full border-t border-border bg-card/60 backdrop-blur-md mt-20 pt-16 pb-8">
       <div className="container mx-auto px-4">
@@ -141,7 +133,7 @@ export function Footer() {
                   ))}
                 </ul>
               ) : (
-                <p className="text-sm text-muted-foreground italic">List coming soon...</p>
+                <p className="text-sm text-muted-foreground">Voice artist list coming soon.</p>
               )}
             </div>
           </div>
@@ -152,31 +144,39 @@ export function Footer() {
               Connect With Us
             </h3>
             <div className="flex flex-wrap gap-3">
-              <SocialLink href={settings?.facebook} icon={<FaFacebook />} label="Facebook" onClick={handleLinkClick} />
-              <SocialLink href={settings?.youtube} icon={<FaYoutube />} label="YouTube" onClick={handleLinkClick} />
-              <SocialLink href={settings?.telegram} icon={<FaTelegram />} label="Telegram" onClick={handleLinkClick} />
-              <SocialLink href={settings?.instagram} icon={<FaInstagram />} label="Instagram" onClick={handleLinkClick} />
-              <SocialLink href={normalizeWhatsappLink(settings?.whatsapp)} icon={<FaWhatsapp />} label="WhatsApp" onClick={handleLinkClick} />
-              <SocialLink href={settings?.dailymotion} icon={<SiDailymotion />} label="Dailymotion" onClick={handleLinkClick} />
-              <SocialLink href={settings?.rumble} icon={<SiRumble />} label="Rumble" onClick={handleLinkClick} />
+              <SocialLink href={settings?.facebook} icon={<FaFacebook />} label="Facebook" />
+              <SocialLink href={settings?.youtube} icon={<FaYoutube />} label="YouTube" />
+              <SocialLink href={settings?.telegram} icon={<FaTelegram />} label="Telegram" />
+              <SocialLink href={settings?.instagram} icon={<FaInstagram />} label="Instagram" />
+              <SocialLink href={normalizeWhatsappLink(settings?.whatsapp)} icon={<FaWhatsapp />} label="WhatsApp" />
+              <SocialLink href={settings?.dailymotion} icon={<SiDailymotion />} label="Dailymotion" />
+              <SocialLink href={settings?.rumble} icon={<SiRumble />} label="Rumble" />
             </div>
             
-            <div className="mt-6 space-y-2">
-              <a 
-                href={settings?.telegram || "#"} 
-                onClick={(e) => handleLinkClick(e, settings?.telegram)}
-                className="block text-sm text-cyan-400 hover:text-cyan-300 transition-colors"
-              >
-                Contact us on Telegram
-              </a>
-              <a 
-                href={settings?.telegramChannel || "#"} 
-                onClick={(e) => handleLinkClick(e, settings?.telegramChannel)}
-                className="block text-sm text-cyan-400 hover:text-cyan-300 transition-colors"
-              >
-                Official Telegram Channel
-              </a>
-            </div>
+            {(settings?.telegram || settings?.telegramChannel) && (
+              <div className="mt-6 space-y-2">
+                {settings?.telegram && (
+                  <a
+                    href={settings.telegram}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block text-sm text-cyan-400 hover:text-cyan-300 transition-colors"
+                  >
+                    Contact us on Telegram
+                  </a>
+                )}
+                {settings?.telegramChannel && (
+                  <a
+                    href={settings.telegramChannel}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block text-sm text-cyan-400 hover:text-cyan-300 transition-colors"
+                  >
+                    Official Telegram Channel
+                  </a>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -184,6 +184,10 @@ export function Footer() {
 
         <div className="border-t border-border pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
           <p>For the Fans, by The Fans.</p>
+          <nav aria-label="Legal" className="flex items-center gap-4">
+            <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
+            <Link href="/terms" className="hover:text-foreground transition-colors">Terms</Link>
+          </nav>
           <p>All Rights Reserved © {new Date().getFullYear()} {settings?.websiteTitle || "TVR Dubbers"}</p>
         </div>
       </div>
@@ -191,11 +195,14 @@ export function Footer() {
   );
 }
 
-function SocialLink({ href, icon, label, onClick }: { href?: string | null, icon: React.ReactNode, label: string, onClick: (e: React.MouseEvent<HTMLAnchorElement>, url?: string | null) => void }) {
+function SocialLink({ href, icon, label }: { href?: string | null, icon: React.ReactNode, label: string }) {
+  // No link set in the admin panel yet: show nothing instead of a dead "#" button.
+  if (!href) return null;
   return (
     <a
-      href={href || "#"}
-      onClick={(e) => onClick(e, href)}
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
       className="w-10 h-10 rounded-full liquid-pill flex items-center justify-center text-lg text-foreground/70 hover:text-cyan-500"
       title={label}
       aria-label={label}
