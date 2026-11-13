@@ -137,7 +137,7 @@ export function Home() {
       <CursorEffects />
       <Navbar onSelectEpisode={setActiveEpisodeId} />
 
-      <main id="main-content" tabIndex={-1} className="container mx-auto px-4 pb-24 focus:outline-none">
+      <main id="main-content" tabIndex={-1} className="container mx-auto px-4 pb-10 focus:outline-none">
         
         {/* HERO SECTION */}
         <section className="py-20 md:py-32 flex flex-col items-center text-center space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-1000">

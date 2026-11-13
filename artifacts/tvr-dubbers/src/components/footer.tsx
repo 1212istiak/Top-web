@@ -1,11 +1,9 @@
-import { useState } from "react";
 import { Link } from "wouter";
 import { useGetSettings, useListVoiceArtists } from "@workspace/api-client-react";
 import { FaFacebook, FaYoutube, FaTelegram, FaWhatsapp, FaInstagram, FaPlay, FaVideo } from "react-icons/fa";
 import { SiRumble, SiDailymotion } from "react-icons/si";
-import { Switch } from "@/components/ui/switch";
-
-type Lang = "en" | "bn";
+import { LangSwitch } from "@/components/lang-switch";
+import { useLang, type Lang } from "@/hooks/use-lang";
 
 const ABOUT_TEXT: Record<Lang, { heading: string; body: string }> = {
   en: {
@@ -22,39 +20,12 @@ const ABOUT_TEXT: Record<Lang, { heading: string; body: string }> = {
 
 // Both languages are always in the page HTML (one hidden), so search engines can read both.
 function AboutBox() {
-  const [lang, setLang] = useState<Lang>(() => {
-    try {
-      return localStorage.getItem("tvr_lang") === "bn" ? "bn" : "en";
-    } catch {
-      return "en";
-    }
-  });
-
-  const handleChange = (isBengali: boolean) => {
-    const next: Lang = isBengali ? "bn" : "en";
-    setLang(next);
-    try {
-      localStorage.setItem("tvr_lang", next);
-    } catch {
-      /* storage unavailable, ignore */
-    }
-  };
+  const [lang] = useLang();
 
   return (
     <section className="liquid-tile liquid-static rounded-2xl p-6 mb-12 relative">
       <div className="absolute top-4 right-4">
-        <Switch
-          checked={lang === "bn"}
-          onCheckedChange={handleChange}
-          aria-label="Switch language between English and Bengali"
-          className="h-6 w-11 data-[state=checked]:bg-cyan-600"
-          thumbClassName="flex h-5 w-5 items-center justify-center data-[state=checked]:translate-x-5"
-          thumbIcon={
-            <span className="text-[10px] font-bold leading-none text-foreground">
-              {lang === "bn" ? "B" : "E"}
-            </span>
-          }
-        />
+        <LangSwitch />
       </div>
 
       <div lang="en" hidden={lang !== "en"} className="pr-16 space-y-3">
@@ -79,7 +50,7 @@ function AboutBox() {
 // admin panel (e.g. "01950241724") and always returns a proper wa.me link.
 // Bare numbers starting with "0" are treated as local Bangladeshi numbers
 // and get the +880 country code prefixed.
-function normalizeWhatsappLink(value: string | null | undefined): string | null {
+export function normalizeWhatsappLink(value: string | null | undefined): string | null {
   if (!value) return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
