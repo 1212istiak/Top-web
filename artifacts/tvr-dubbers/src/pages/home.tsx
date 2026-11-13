@@ -16,6 +16,7 @@ import { SparkleBackground } from "@/components/sparkle-background";
 import { CursorEffects } from "@/components/cursor-effects";
 import { Reveal } from "@/components/reveal";
 import { Faq } from "@/components/faq";
+import { TaglineReveal } from "@/components/tagline-reveal";
 
 // Reusable IntersectionObserver Image
 function LazyImage({ src, alt, className }: { src: string, alt: string, className?: string }) {
@@ -397,6 +398,8 @@ export function Home() {
           )}
         </section>
         </Reveal>
+
+        <TaglineReveal />
 
         <Faq />
 
