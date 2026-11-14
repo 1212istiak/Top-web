@@ -3,7 +3,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Mic, Square, Send, Loader2, Volume2, VolumeX, ImagePlus, X, Zap, Brain } from "lucide-react";
+import { Loader2, ImagePlus, X, Zap, Brain } from "lucide-react";
+import { JerinChat } from "@/components/jerin/chat";
 
 // ---------------------------------------------------------------------------
 // Types & Constants
@@ -84,97 +85,6 @@ function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }>
 }
 
 // ---------------------------------------------------------------------------
-// Speech helpers
-// ---------------------------------------------------------------------------
-function cleanForSpeech(text: string): string {
-  return text
-    .replace(/\*\*(.*?)\*\*/g, "$1")
-    .replace(/\*(.*?)\*/g, "$1")
-    .replace(/#{1,6}\s?/g, "")
-    .replace(/`{1,3}(.*?)`{1,3}/g, "$1")
-    .replace(/^[-•]\s?/gm, "")
-    .trim();
-}
-
-function pickVoice(): SpeechSynthesisVoice | undefined {
-  const voices = window.speechSynthesis.getVoices();
-  return voices.find((v) => v.lang.toLowerCase().startsWith("bn")) || undefined;
-}
-
-// Phone/browser voice — only used as a fallback if ElevenLabs fails
-function speakWithBrowser(text: string) {
-  if (!("speechSynthesis" in window)) return;
-  window.speechSynthesis.cancel();
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.rate = 1.0;
-  const voice = pickVoice();
-  if (voice) utter.voice = voice;
-  window.speechSynthesis.speak(utter);
-}
-
-// One shared <audio> element so mobile browsers keep allowing playback after the
-// first tap (autoplay policies block brand-new Audio() objects that start later).
-let jerinAudio: HTMLAudioElement | null = null;
-let jerinAudioUrl: string | null = null;
-let speakToken = 0;
-
-function getJerinAudio(): HTMLAudioElement {
-  if (!jerinAudio) jerinAudio = new Audio();
-  return jerinAudio;
-}
-
-// Call from a user gesture (mic tap, send, replay) to unlock audio playback on mobile
-function unlockJerinAudio() {
-  const a = getJerinAudio();
-  if (a.dataset.unlocked) return;
-  a.dataset.unlocked = "1";
-  a.src = "data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQxAADB8AhSmxhIIEVCSiJrDCQBTcu3UrAEwUAAAAAAAAAAAAAAAAA";
-  a.play().catch(() => {});
-}
-
-function stopSpeaking() {
-  speakToken++;
-  if (jerinAudio) { jerinAudio.pause(); jerinAudio.removeAttribute("src"); }
-  if (jerinAudioUrl) { URL.revokeObjectURL(jerinAudioUrl); jerinAudioUrl = null; }
-  if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-}
-
-async function speak(text: string, muted: boolean) {
-  if (muted) return;
-  stopSpeaking();
-  const myToken = speakToken;
-  const clean = cleanForSpeech(text);
-  if (!clean) return;
-
-  try {
-    const token = localStorage.getItem("tvr_admin_token");
-    const res = await fetch(`${API_BASE}/api/rocky/tts`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ text: clean }),
-    });
-    if (!res.ok) throw new Error(`TTS ${res.status}`);
-    const blob = await res.blob();
-    if (myToken !== speakToken) return; // user muted / started something newer while loading
-
-    jerinAudioUrl = URL.createObjectURL(blob);
-    const audio = getJerinAudio();
-    audio.src = jerinAudioUrl;
-    await audio.play();
-  } catch {
-    if (myToken === speakToken) speakWithBrowser(clean);
-  }
-}
-
-function getSpeechRecognition(): any {
-  const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-  return SR ? new SR() : null;
-}
-
-// ---------------------------------------------------------------------------
 // JERIN SETTINGS BAR — model selector + thinking toggle
 // ---------------------------------------------------------------------------
 function JerinSettings({
@@ -252,21 +162,21 @@ export function RockyTab() {
     () => (localStorage.getItem(LS_MODEL) as GeminiModel) || "gemini-3.8-flash"
   );
   const [thinking, setThinking] = useState<boolean>(
-    () => localStorage.getItem(LS_THINKING) !== "false"
+    () => localStorage.getItem(LS_THINKING) === "true"
   );
 
   return (
     <div className="space-y-4 animate-in fade-in">
       <div>
         <h2 className="text-2xl font-display font-bold text-cyan-400">Jerin</h2>
-        <p className="text-sm text-muted-foreground mt-1">Your TVR Dubbers copilot — voice chat, scene ideas, titles, and growth insights.</p>
+        <p className="text-sm text-muted-foreground mt-1">Your TVR Dubbers copilot — chat, voice, images & video, scene ideas, titles, and growth insights.</p>
       </div>
 
       <JerinSettings model={model} setModel={setModel} thinking={thinking} setThinking={setThinking} />
 
       <Tabs defaultValue="voice" className="w-full">
         <TabsList className="bg-black/20 border border-border flex-wrap h-auto gap-1 overflow-x-auto">
-          <TabsTrigger value="voice">Voice Chat</TabsTrigger>
+          <TabsTrigger value="voice">Chat</TabsTrigger>
           <TabsTrigger value="scene">Scene Suggester</TabsTrigger>
           <TabsTrigger value="titles">Title Generator</TabsTrigger>
           <TabsTrigger value="growth">Growth Insights</TabsTrigger>
@@ -274,7 +184,7 @@ export function RockyTab() {
         </TabsList>
 
         <div className="mt-4">
-          <TabsContent value="voice"><VoiceChatPanel model={model} thinking={thinking} /></TabsContent>
+          <TabsContent value="voice" forceMount className="data-[state=inactive]:hidden"><JerinChat model={model} thinking={thinking} /></TabsContent>
           <TabsContent value="scene"><PromptPanel mode="scene" model={model} thinking={thinking} placeholder="What's trending, requested, or being talked about lately? (e.g. fan comments asking for a scene, recent BTTH season buzz...)" buttonLabel="Suggest a scene" /></TabsContent>
           <TabsContent value="titles"><PromptPanel mode="titles" model={model} thinking={thinking} placeholder="Describe the episode/scene you just dubbed (characters, moment, tone)..." buttonLabel="Generate titles & descriptions" /></TabsContent>
           <TabsContent value="growth"><GrowthPanel model={model} thinking={thinking} /></TabsContent>
@@ -283,208 +193,6 @@ export function RockyTab() {
       </Tabs>
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// VOICE CHAT PANEL
-// ---------------------------------------------------------------------------
-interface ChatMessage {
-  role: "user" | "rocky" | "action";
-  text: string;
-  pendingAction?: { name: string; args: any };
-  actionStatus?: "pending" | "confirmed" | "cancelled" | "failed";
-  actionResult?: string;
-  imageResult?: string; // data URL for a generated thumbnail
-}
-
-function ACTION_LABELS(name: string, args: any): string {
-  if (name === "create_episode") {
-    return `Create episode #${args.episodeNumber}: "${args.title}"${args.genre ? ` (${args.genre})` : ""}`;
-  }
-  if (name === "update_episode") {
-    const parts: string[] = [];
-    if (args.primaryServerUrl) parts.push(`Server 1 → ${args.primaryServerUrl}`);
-    if (args.backupServerUrl) parts.push(`Server 2 → ${args.backupServerUrl}`);
-    if (args.title) parts.push(`title → "${args.title}"`);
-    if (args.genre) parts.push(`genre → ${args.genre}`);
-    if (args.thumbnailUrl) parts.push(`thumbnail → ${args.thumbnailUrl}`);
-    return `Update${args.season ? ` S${args.season}` : ""} EP${args.episodeNumber}: ${parts.join(", ")}`;
-  }
-  if (name === "analyze_video") {
-    return `Watch video: ${args.videoUrl}`;
-  }
-  if (name === "generate_thumbnail") {
-    return `Write thumbnail design spec for: "${args.episodeContext}"`;
-  }
-  if (name === "schedule_social_post") {
-    return `Schedule post on ${args.platformIds?.length || 0} platform(s): "${args.content}"`;
-  }
-  return name;
-}
-
-function VoiceChatPanel({ model, thinking }: { model: GeminiModel; thinking: boolean }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [muted, setMuted] = useState(false);
-  const recognitionRef = useRef<any>(null);
-  const { toast } = useToast();
-
-  const send = async (text: string) => {
-    if (!text.trim() || isLoading) return;
-    unlockJerinAudio();
-    setMessages((m) => [...m, { role: "user", text }]);
-    setInput("");
-    setIsLoading(true);
-    try {
-      const reply = await askRockyFull("chat", text, model, thinking);
-      setMessages((m) => [
-        ...m,
-        {
-          role: "rocky",
-          text: reply.text,
-          pendingAction: reply.functionCall,
-          actionStatus: reply.functionCall ? "pending" : undefined,
-        },
-      ]);
-      speak(reply.text, muted);
-    } catch (err: any) {
-      toast({ title: "Jerin error", description: err.message, variant: "destructive" });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const runAction = async (index: number) => {
-    const msg = messages[index];
-    if (!msg.pendingAction) return;
-    setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionStatus: "confirmed" } : x)));
-    try {
-      const token = localStorage.getItem("tvr_admin_token");
-      const res = await fetch(`${API_BASE}/api/rocky/execute-action`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ action: msg.pendingAction.name, args: msg.pendingAction.args }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Action failed");
-
-      if (msg.pendingAction.name === "create_episode") {
-        setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionResult: `✅ Episode #${data.episodeId} is live.` } : x)));
-      } else if (msg.pendingAction.name === "update_episode") {
-        setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionResult: `✅ Updated S${data.season} EP${data.episodeNumber} (${(data.changed || []).join(", ")}).` } : x)));
-      } else if (msg.pendingAction.name === "analyze_video") {
-        setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionResult: `✅ ${data.text}` } : x)));
-      } else if (msg.pendingAction.name === "generate_thumbnail") {
-        setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionResult: `✅ ${data.text}` } : x)));
-      } else if (msg.pendingAction.name === "schedule_social_post") {
-        setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionResult: `✅ Scheduled (${data.scheduledTime}).` } : x)));
-      } else {
-        setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionResult: "✅ Done." } : x)));
-      }
-    } catch (err: any) {
-      setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionStatus: "failed", actionResult: `❌ ${err.message}` } : x)));
-    }
-  };
-
-  const cancelAction = (index: number) => {
-    setMessages((m) => m.map((x, i) => (i === index ? { ...x, actionStatus: "cancelled" } : x)));
-  };
-
-  const toggleListening = () => {
-    unlockJerinAudio();
-    if (isListening) { recognitionRef.current?.stop(); setIsListening(false); return; }
-    const recognition = getSpeechRecognition();
-    if (!recognition) {
-      toast({ title: "Not supported", description: "Voice input isn't supported in this browser. Try Chrome.", variant: "destructive" });
-      return;
-    }
-    recognition.lang = "en-US";
-    recognition.interimResults = false;
-    recognition.onresult = (e: any) => send(e.results[0][0].transcript);
-    recognition.onend = () => setIsListening(false);
-    recognition.onerror = () => setIsListening(false);
-    recognitionRef.current = recognition;
-    recognition.start();
-    setIsListening(true);
-  };
-
-  return (
-    <div className="space-y-4 max-w-2xl">
-      <div className="flex justify-end">
-        <Button type="button" variant="ghost" size="sm"
-          onClick={() => { const next = !muted; setMuted(next); if (next) stopSpeaking(); else unlockJerinAudio(); }}
-          className="text-muted-foreground hover:text-cyan-400"
-        >
-          {muted ? <VolumeX className="h-4 w-4 mr-1" /> : <Volume2 className="h-4 w-4 mr-1" />}
-          {muted ? "Voice off" : "Voice on"}
-        </Button>
-      </div>
-
-      <div className="border border-border rounded-lg bg-black/20 p-4 h-80 sm:h-96 overflow-y-auto space-y-4">
-        {messages.length === 0 && (
-          <p className="text-sm text-muted-foreground">Tap the mic or type below to talk to Jerin. Ask it to publish an episode and it'll show you a confirm card before doing anything real.</p>
-        )}
-        {messages.map((m, i) => (
-          <div key={i} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
-            <span className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 px-1">
-              {m.role === "user" ? "You" : "Jerin"}
-            </span>
-            <div className={`max-w-[85%] rounded-lg px-3 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words ${m.role === "user" ? "bg-cyan-900/40 text-cyan-100" : "bg-white/5 text-foreground"}`}>
-              {m.text}
-              {m.role === "rocky" && (
-                <div className="mt-1.5 pt-1.5 border-t border-white/5">
-                  <button onClick={() => { unlockJerinAudio(); speak(m.text, false); }} className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 text-xs">
-                    <Volume2 className="h-3.5 w-3.5" /> Replay
-                  </button>
-                </div>
-              )}
-
-              {m.pendingAction && (
-                <div className="mt-2 p-2.5 rounded-md border border-cyan-700/50 bg-cyan-950/30">
-                  <p className="text-xs font-semibold text-cyan-300 mb-1.5">⚡ {ACTION_LABELS(m.pendingAction.name, m.pendingAction.args)}</p>
-                  {m.actionStatus === "pending" && (
-                    <div className="flex gap-2">
-                      <Button size="sm" className="h-7 text-xs bg-cyan-600 hover:bg-cyan-500" onClick={() => runAction(i)}>Confirm</Button>
-                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => cancelAction(i)}>Cancel</Button>
-                    </div>
-                  )}
-                  {m.actionStatus === "confirmed" && !m.actionResult && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Running...</p>
-                  )}
-                  {m.actionStatus === "cancelled" && <p className="text-xs text-muted-foreground">Cancelled.</p>}
-                  {m.actionResult && <p className="text-xs whitespace-pre-wrap leading-relaxed">{m.actionResult}</p>}
-                  {m.imageResult && (
-                    <div className="mt-2">
-                      <img src={m.imageResult} alt="Generated thumbnail" className="rounded-md border border-border max-w-full" />
-                      <a href={m.imageResult} download="thumbnail.png" className="text-xs text-cyan-400 underline mt-1 inline-block">Download</a>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-        {isLoading && <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin text-cyan-400" />{thinking ? "Deep thinking..." : "Thinking..."}</div>}
-      </div>
-
-      <div className="flex gap-2 items-end">
-        <Button type="button" size="icon" onClick={toggleListening}
-          className={isListening ? "bg-red-600 hover:bg-red-500" : "bg-cyan-600 hover:bg-cyan-500"}>
-          {isListening ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-        </Button>
-        <Textarea value={input} onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message..." className="flex-1 min-h-[44px] max-h-32"
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } }}
-        />
-        <Button type="button" size="icon" onClick={() => send(input)} disabled={isLoading}>
-          <Send className="h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  );
-
 }
 
 // ---------------------------------------------------------------------------

@@ -5,3 +5,4 @@ export * from "./settings";
 export * from "./trailer";
 export * from "./voiceArtists";
 export * from "./admin";
+export * from "./jerin";

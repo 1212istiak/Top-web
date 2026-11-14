@@ -10,6 +10,7 @@ import adminRouter from "./admin";
 import rockyRouter from "./rocky";
 import rockyPublishRouter from "./rocky-publish";
 import rockyTtsRouter from "./rocky-tts";
+import jerinRouter from "./jerin";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(adminRouter);
 router.use(rockyRouter);
 router.use(rockyPublishRouter);
 router.use(rockyTtsRouter);
+router.use(jerinRouter);
 
 export default router;

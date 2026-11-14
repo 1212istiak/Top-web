@@ -9,15 +9,7 @@ const router: IRouter = Router();
 const ALLOWED_MODELS = ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash"] as const;
 type GeminiModel = typeof ALLOWED_MODELS[number];
 
-// Stay under free-tier RPM cap (rolling 60s window)
-let requestLog: number[] = [];
-function isRateLimited(): boolean {
-  const now = Date.now();
-  requestLog = requestLog.filter((t) => now - t < 60_000);
-  if (requestLog.length >= 18) return true;
-  requestLog.push(now);
-  return false;
-}
+import { isRateLimited } from "../lib/rate-limit";
 
 const VOICE_NOTE =
   " Keep responses concise and avoid heavy markdown symbols like **, *, #, or backticks since this reply may be read aloud.";
