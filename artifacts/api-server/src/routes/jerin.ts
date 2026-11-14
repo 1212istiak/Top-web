@@ -956,7 +956,7 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
       if (!res.writableEnded) res.end();
       return;
     }
-    logger.error({ err }, "Jerin chat failed");
+    logger.error({ err, geminiStatus: (err as any)?.status, geminiBody: String((err as any)?.body ?? "").slice(0, 1500) }, "Jerin chat failed");
     try {
       await saveModelMessage();
     } catch {

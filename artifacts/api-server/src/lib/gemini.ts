@@ -47,16 +47,30 @@ export function parseQuota(body: string): QuotaInfo {
   return { kind, retrySeconds };
 }
 
+/** Google's own human-readable reason from an error body, shortened. */
+export function geminiReason(body: string): string {
+  try {
+    const msg = JSON.parse(body)?.error?.message;
+    if (typeof msg === "string") return msg.replace(/\s+/g, " ").slice(0, 260);
+  } catch {
+    /* not JSON */
+  }
+  return body.replace(/\s+/g, " ").slice(0, 200);
+}
+
 export function friendlyGeminiError(status: number, text: string, model: string): string {
   if (status === 429) {
     const q = parseQuota(text);
     const wait = q.retrySeconds ? ` Try again in about ${q.retrySeconds} seconds.` : "";
+    if (/limit:\s*0\b/.test(text))
+      return `Google reports a free-tier limit of 0 for ${model} on this request, meaning your key has no free allowance for it (or the daily allowance is fully spent). Try a different model in Jerin's settings, or enable billing on the key.`;
     if (q.kind === "day")
       return `The free daily quota for ${model} is used up. It resets at midnight Pacific time (about 2 PM in Dhaka). Switch to another Gemini model in Jerin's settings to keep going now.`;
     if (q.kind === "tokens")
       return `That request is bigger than the free per-minute token limit (videos cost thousands of tokens per minute of footage).${wait || " Wait a minute, or send a shorter clip."}`;
     if (q.kind === "minute") return `Too many requests for this minute on the free tier.${wait || " Wait a moment and try again."}`;
-    return `Gemini says the free-tier quota for ${model} is exhausted right now.${wait}`;
+    const why = geminiReason(text);
+    return `Gemini says the quota for ${model} is exhausted right now.${wait}${why ? ` Google's message: "${why}"` : ""}`;
   }
   if (status === 404) return `Model ${model} isn't available on your key — pick a different model in Jerin's settings.`;
   if (status === 503) return "Gemini is overloaded right now — try again in a moment.";
