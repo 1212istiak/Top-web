@@ -134,6 +134,59 @@ export function keyPoolStatus() {
   });
 }
 
+/** Last 4 characters only, so keys can be matched with AI Studio's list without exposing them. */
+const hintOf = (key: string) => "…" + key.slice(-4);
+
+export interface KeyTestResult {
+  label: string;
+  envName: string;
+  hint?: string;
+  status: "ok" | "no_quota" | "invalid" | "error" | "not_set";
+  message: string;
+}
+
+/** Sends a tiny real request to every key, one after another, and reports what each one can do. */
+export async function testKeys(model: string): Promise<KeyTestResult[]> {
+  const results: KeyTestResult[] = [];
+  const envNames = ["GEMINI_API_KEY", ...Array.from({ length: 8 }, (_, i) => `GEMINI_API_KEY_${i + 2}`)];
+  const configured = geminiKeys();
+  const byLabel = new Map(configured.map((k) => [k.label, k]));
+  for (let i = 0; i < envNames.length; i++) {
+    const label = `Key ${i + 1}`;
+    const k = byLabel.get(label);
+    if (!k) {
+      if (i < 6) results.push({ label, envName: envNames[i], status: "not_set", message: "Not set on the server (or it duplicates another key)." });
+      continue;
+    }
+    try {
+      const res = await fetch(`${API_ROOT}/v1beta/models/${model}:generateContent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": k.key },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "Reply with the single word OK." }] }],
+          generationConfig: { maxOutputTokens: 16, thinkingConfig: { thinkingBudget: 0 } },
+        }),
+        signal: AbortSignal.timeout(20000),
+      });
+      const text = await res.text();
+      if (res.ok) {
+        resting.delete(`${k.id}|${model}`);
+        disabled.delete(k.id);
+        results.push({ label, envName: envNames[i], hint: hintOf(k.key), status: "ok", message: "Working — has quota left." });
+        continue;
+      }
+      const f = classifyKeyFailure(res.status, text);
+      if (f) markFailed(k, model, f);
+      if (f?.invalid) results.push({ label, envName: envNames[i], hint: hintOf(k.key), status: "invalid", message: "Google rejected this key. It is wrong, deleted, or restricted — copy it again." });
+      else if (f) results.push({ label, envName: envNames[i], hint: hintOf(k.key), status: "no_quota", message: `Valid, but out of quota right now (${f.reason}).` });
+      else results.push({ label, envName: envNames[i], hint: hintOf(k.key), status: "error", message: `Unexpected reply from Google (HTTP ${res.status}).` });
+    } catch {
+      results.push({ label, envName: envNames[i], hint: hintOf(k.key), status: "error", message: "Couldn't reach Google to test this key." });
+    }
+  }
+  return results;
+}
+
 export function keyLabel(id: string): string {
   return geminiKeys().find((k) => k.id === id)?.label ?? "another key";
 }

@@ -21,6 +21,7 @@ import {
   hasGeminiKeys,
   keyLabel,
   keyPoolStatus,
+  testKeys,
   generateOnce,
   streamGenerate,
   uploadToGeminiFiles,
@@ -235,6 +236,12 @@ function sse(res: Response, data: Record<string, unknown>) {
 // Which API keys are loaded and which are resting (never exposes key material).
 router.get("/rocky/keys", requireAdmin, (_req, res): void => {
   res.json({ keys: keyPoolStatus() });
+});
+
+// Sends one tiny request to each key (sequentially) to prove it is valid and has quota.
+router.post("/rocky/keys/test", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  const model = ALLOWED_MODELS.includes(req.body?.model ?? "") ? (req.body.model as string) : DEFAULT_MODEL;
+  res.json({ model, results: await testKeys(model) });
 });
 
 router.get("/rocky/sessions", requireAdmin, async (req, res): Promise<void> => {

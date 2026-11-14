@@ -177,6 +177,17 @@ export function JerinChat({ model, thinking }: { model: string; thinking: boolea
       clearInterval(t);
     };
   }, []);
+  type KeyTest = { label: string; envName: string; hint?: string; status: string; message: string };
+  const [keyTest, setKeyTest] = useState<KeyTest[] | "running" | null>(null);
+  const runKeyTest = async () => {
+    setKeyTest("running");
+    try {
+      const d = await apiJson<{ results: KeyTest[] }>("/keys/test", { method: "POST", body: JSON.stringify({}) });
+      setKeyTest(d.results);
+    } catch {
+      setKeyTest([{ label: "Test", envName: "", status: "error", message: "Couldn't run the test. Is the server reachable?" }]);
+    }
+  };
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -803,11 +814,27 @@ export function JerinChat({ model, thinking }: { model: string; thinking: boolea
           >
             <MessageSquarePlus className="h-4 w-4" /> New chat
           </button>
-          {keyStatus && keyStatus.total > 0 && (
-            <div className="px-1 text-[11px] text-muted-foreground">
-              API keys: {keyStatus.ready}/{keyStatus.total} ready
+          <div className="px-1 text-[11px] text-muted-foreground">
+            <div className="flex items-center justify-between">
+              <span>{keyStatus ? `API keys: ${keyStatus.ready}/${keyStatus.total} ready` : "API keys"}</span>
+              <button onClick={runKeyTest} disabled={keyTest === "running"} className="text-cyan-300 hover:underline disabled:opacity-50">
+                {keyTest === "running" ? "Testing…" : "Test all keys"}
+              </button>
             </div>
-          )}
+            {Array.isArray(keyTest) && (
+              <ul className="mt-1.5 space-y-1">
+                {keyTest.map((r) => (
+                  <li key={r.label} className="rounded-lg bg-white/5 px-2 py-1">
+                    <span className={r.status === "ok" ? "text-emerald-400" : r.status === "no_quota" ? "text-amber-400" : "text-rose-400"}>
+                      {r.status === "ok" ? "✓" : r.status === "no_quota" ? "!" : "✗"}
+                    </span>{" "}
+                    <b>{r.label}</b> {r.hint ? <span className="opacity-70">({r.hint})</span> : null} — {r.message}
+                    {r.status === "not_set" && r.envName ? <span className="opacity-70"> Variable: {r.envName}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <input
