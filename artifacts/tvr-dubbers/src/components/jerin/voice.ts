@@ -64,15 +64,28 @@ export function stopVoice() {
   setOwner(null);
 }
 
-async function fetchTts(text: string): Promise<Blob | "skip"> {
-  const res = await fetch(`${API_BASE}/api/rocky/tts`, {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify({ text }),
-  });
-  if (res.status === 400) return "skip"; // nothing speakable in this chunk
-  if (!res.ok) throw new Error(`TTS ${res.status}`);
-  return res.blob();
+type TtsResult = Blob | "skip" | "unconfigured" | "failed";
+
+// One chunk of speech from ElevenLabs. Retries rate limits and network blips so a long reply keeps
+// Jerin's voice all the way through instead of changing voice mid-answer.
+async function fetchTts(text: string): Promise<TtsResult> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(`${API_BASE}/api/rocky/tts`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ text }),
+      });
+      if (res.status === 400) return "skip"; // nothing speakable in this chunk
+      if (res.status === 503) return "unconfigured"; // ElevenLabs keys not set on the server
+      if (res.ok) return await res.blob();
+      if (res.status !== 429 && res.status < 500) return "failed";
+    } catch {
+      /* network blip: retry */
+    }
+    await new Promise((r) => setTimeout(r, 900 * (attempt + 1)));
+  }
+  return "failed";
 }
 
 function playBlob(blob: Blob): Promise<void> {
@@ -95,7 +108,7 @@ function playBlob(blob: Blob): Promise<void> {
   });
 }
 
-// Only used if ElevenLabs is unreachable for a chunk.
+// Only used when ElevenLabs is not configured on the server at all (never mid-reply).
 function speakBrowser(text: string): Promise<void> {
   return new Promise<void>((resolve) => {
     if (!("speechSynthesis" in window)) return resolve();
@@ -121,6 +134,8 @@ export class VoiceStreamer {
   private ended = false;
   private pendingChunks = 0;
   private chain: Promise<void> = Promise.resolve();
+  private fetchChain: Promise<unknown> = Promise.resolve();
+  private errored = false;
   private token: number;
 
   constructor(ownerId: string) {
@@ -179,14 +194,21 @@ export class VoiceStreamer {
     const token = this.token;
     this.first = false;
     this.pendingChunks++;
-    // Start fetching immediately so the next sentence is ready when the current one ends.
-    const audio = fetchTts(chunk).catch(() => "fallback" as const);
+    // Requests go out one at a time (ElevenLabs rejects bursts), but each starts as soon as the
+    // previous one is done, so audio is ready well before the current sentence finishes playing.
+    const audio: Promise<TtsResult> = this.fetchChain.then(() => (token === activeToken ? fetchTts(chunk) : "skip"));
+    this.fetchChain = audio.catch(() => {});
     this.chain = this.chain.then(async () => {
       try {
         const r = await audio;
         if (token !== activeToken || r === "skip") return;
-        if (r === "fallback") await speakBrowser(chunk);
-        else await playBlob(r);
+        if (r === "unconfigured") await speakBrowser(chunk);
+        else if (r === "failed") {
+          if (!this.errored) {
+            this.errored = true;
+            window.dispatchEvent(new CustomEvent("jerin-voice-error"));
+          }
+        } else await playBlob(r);
       } finally {
         this.pendingChunks--;
         if (this.ended && this.pendingChunks === 0 && token === activeToken) setOwner(null);

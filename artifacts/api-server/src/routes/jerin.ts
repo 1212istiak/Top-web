@@ -17,6 +17,8 @@ import { buildSiteContext, loadMemory } from "../lib/site-context";
 import {
   GeminiError,
   friendlyGeminiError,
+  parseQuota,
+  sleep,
   generateOnce,
   streamGenerate,
   uploadToGeminiFiles,
@@ -153,6 +155,7 @@ STYLE
 - Use Markdown when it helps (short lists, tables, code blocks). Avoid walls of text.
 
 WHAT YOU CAN DO
+- You can WATCH public YouTube videos when the user pastes a link (you receive the video itself, audio and picture), so you can write transcripts, dubbing scripts and translations from it. For long videos, work through the whole thing and be upfront about the time it needs.
 - Answer anything, analyse attachments (images, video, audio, PDFs, text files), search the web and read URLs when those tools are available, and run Python for calculations or data work.
 - Create or edit images with the generate_image function. If it fails (for example the Gemini key has no image quota), say so plainly and instead give a precise written design brief.
 - You CANNOT render or edit video files. For video, analyse it and give a concrete edit plan (timestamps, cuts, captions, pacing) the user can apply in their editor. Be upfront about this when asked to "edit" a video.
@@ -544,16 +547,29 @@ interface ToolToggles {
 
 // Some Gemini models reject mixing built-in tools (search/code) with function calling or an
 // unknown flag. We try the richest request first and fall back, remembering what worked.
+// Gemini can natively watch public YouTube videos when the URL is passed as file data. (The
+// URL-reading tool cannot, which is why a pasted YouTube link used to go nowhere.)
+const YT_RE = /https?:\/\/(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?[^\s]*?v=|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/gi;
+function extractYouTubeUrls(text: string): string[] {
+  const ids = new Set<string>();
+  for (const m of text.matchAll(YT_RE)) ids.add(m[1]);
+  return [...ids].slice(0, 2).map((id) => `https://www.youtube.com/watch?v=${id}`);
+}
+
 const startVariant: Record<"builtins" | "plain", number> = { builtins: 0, plain: 0 };
 
-function buildVariants(base: any, thinking: boolean, toggles: ToolToggles) {
+function buildVariants(base: any, thinking: boolean, toggles: ToolToggles, hasVideo: boolean) {
   const builtins: any[] = [];
   if (toggles.search) builtins.push({ googleSearch: {} }, { urlContext: {} });
   if (toggles.code) builtins.push({ codeExecution: {} });
   const fn = { functionDeclarations: FUNCTION_DECLARATIONS };
+  // Low media resolution cuts video cost from ~300 to ~100 tokens per second of footage, which is
+  // what makes full-length episodes fit under the free per-minute token limit. Dialogue is audio,
+  // so script work does not need high-res frames.
+  const media = hasVideo ? { mediaResolution: "MEDIA_RESOLUTION_LOW" } : {};
   const thinkingCfg = thinking
-    ? { thinkingConfig: { includeThoughts: true, thinkingBudget: -1 } }
-    : { thinkingConfig: { thinkingBudget: 0 } };
+    ? { ...media, thinkingConfig: { includeThoughts: true, thinkingBudget: -1 } }
+    : { ...media, thinkingConfig: { thinkingBudget: 0 } };
 
   const withTools = (tools: any[], extra: any = {}, gen: any = thinkingCfg) => ({
     ...base,
@@ -736,12 +752,16 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
     const contents: Content[] = [];
     for (const m of history) pushContent(contents, m.role as "user" | "model", messageToContent(m).parts);
 
+    let hasVideoInput = false;
     if (!body.regenerate) {
       const parts: Part[] = [];
       for (const a of clientAtts) {
         if (a.inlineData) parts.push({ inlineData: { mimeType: a.mimeType, data: a.inlineData } });
         else if (isFresh(a)) parts.push({ fileData: { mimeType: a.mimeType, fileUri: a.fileUri } });
       }
+      const youtube = extractYouTubeUrls(text);
+      for (const url of youtube) parts.push({ fileData: { fileUri: url } });
+      hasVideoInput = youtube.length > 0 || clientAtts.some((a) => a.kind === "video");
       if (text) parts.push({ text });
       if (audioOnly) {
         parts.push({
@@ -755,10 +775,11 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
 
     // ---- Stream with tool loop ------------------------------------------------------------
     const baseBody = { systemInstruction: { parts: [{ text: systemPrompt }] } };
-    const variants = buildVariants(baseBody, thinking, toggles);
+    const variants = buildVariants(baseBody, thinking, toggles, hasVideoInput);
     const variantKey = toggles.search || toggles.code ? "builtins" : "plain";
     let variantIdx = Math.min(startVariant[variantKey], variants.length - 1);
     let notice: string | null = null;
+    let rateWaits = 0;
     const sourceSet = new Map<string, string>();
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -827,6 +848,17 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
           }
           break; // stream finished
         } catch (err) {
+          // Short per-minute limit hit before any text arrived: wait it out instead of failing.
+          if (err instanceof GeminiError && err.status === 429 && !succeeded && rateWaits < 2) {
+            const q = parseQuota(err.body);
+            if ((q.kind === "minute" || q.kind === "tokens") && q.retrySeconds && q.retrySeconds <= 40) {
+              rateWaits++;
+              emit({ type: "tool", name: "wait", label: `Free-tier limit — retrying in ${q.retrySeconds}s` });
+              await sleep((q.retrySeconds + 1) * 1000);
+              if (ac.signal.aborted) throw err;
+              continue;
+            }
+          }
           const retryable = err instanceof GeminiError && err.status === 400 && !succeeded && variantIdx < variants.length - 1;
           if (!retryable) throw err;
           logger.warn({ variantIdx, body: (err as GeminiError).body.slice(0, 300) }, "Gemini rejected request variant, falling back");

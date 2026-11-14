@@ -189,6 +189,17 @@ export function JerinChat({ model, thinking }: { model: string; thinking: boolea
   const [voiceOn, setVoiceOn] = useState<boolean>(() => localStorage.getItem(LS_VOICE) !== "false");
   const speakingOwner = useSpeakingOwner();
 
+  useEffect(() => {
+    const onVoiceError = () =>
+      toast({
+        title: "Jerin's voice hit a snag",
+        description: "ElevenLabs didn't answer for part of that reply (rate limit or out of credits). The text is complete.",
+        variant: "destructive",
+      });
+    window.addEventListener("jerin-voice-error", onVoiceError);
+    return () => window.removeEventListener("jerin-voice-error", onVoiceError);
+  }, [toast]);
+
   // recording
   const [rec, setRec] = useState<{ seconds: number; levels: number[] } | null>(null);
   const recRef = useRef<{
@@ -742,7 +753,7 @@ export function JerinChat({ model, thinking }: { model: string; thinking: boolea
 
   return (
     <div
-      className="dark relative flex h-[calc(100dvh-15rem)] min-h-[520px] overflow-hidden rounded-2xl border border-cyan-900/40 text-foreground bg-gradient-to-b from-[#060d17]/90 to-[#04080f]/90 shadow-[0_0_40px_rgba(6,182,212,0.06)]"
+      className="dark relative flex h-[calc(100dvh-15rem)] min-h-[520px] overflow-hidden rounded-2xl border border-cyan-900/40 text-foreground bg-gradient-to-b from-[#060d17] to-[#04080f] shadow-[0_0_40px_rgba(6,182,212,0.06)]"
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes("Files")) {
           e.preventDefault();
@@ -936,7 +947,7 @@ export function JerinChat({ model, thinking }: { model: string; thinking: boolea
 
         {/* Composer */}
         <div className="px-3 pb-3 pt-1">
-          <div className="mx-auto w-full max-w-3xl rounded-2xl border border-white/10 bg-white/[0.04] p-2 shadow-lg transition focus-within:border-cyan-500/40">
+          <div className="mx-auto w-full max-w-3xl rounded-2xl border border-white/10 bg-[#0d141d] p-2 shadow-lg transition focus-within:border-cyan-500/40">
             {pending.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2 px-1 pt-1">
                 {pending.map((p) => {

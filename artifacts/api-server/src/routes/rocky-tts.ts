@@ -26,6 +26,44 @@ const MAX_CHARS = 2500;
 const CACHE_MAX = 80;
 const cache = new Map<string, Buffer>();
 
+// ElevenLabs limits how many requests may run at once (low on small plans) and answers the extra
+// ones with 429. Cap our own concurrency and retry a rate-limited call once, so a long reply is
+// spoken in one voice instead of failing in the middle.
+const MAX_CONCURRENT = 2;
+let active = 0;
+const waiters: Array<() => void> = [];
+async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (active >= MAX_CONCURRENT) await new Promise<void>((resolve) => waiters.push(resolve));
+  active++;
+  try {
+    return await fn();
+  } finally {
+    active--;
+    waiters.shift()?.();
+  }
+}
+
+async function callElevenLabs(apiKey: string, voiceId: string, text: string): Promise<Response> {
+  let res: Response | undefined;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    res = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_64`,
+      {
+        method: "POST",
+        headers: { "xi-api-key": apiKey, "Content-Type": "application/json", Accept: "audio/mpeg" },
+        body: JSON.stringify({
+          text,
+          model_id: TTS_MODEL,
+          voice_settings: { stability: STABILITY, similarity_boost: SIMILARITY },
+        }),
+      },
+    );
+    if (res.status !== 429 && res.status < 500) break;
+    if (attempt === 0) await new Promise((r) => setTimeout(r, 1500));
+  }
+  return res as Response;
+}
+
 export function cleanForVoice(raw: string): string {
   return raw
     .replace(/```[\s\S]*?```/g, " ") // code blocks are not read aloud
@@ -73,22 +111,7 @@ router.post("/rocky/tts", requireAdmin, async (req, res) => {
   }
 
   try {
-    const upstream = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_64`,
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": apiKey,
-          "Content-Type": "application/json",
-          Accept: "audio/mpeg",
-        },
-        body: JSON.stringify({
-          text,
-          model_id: TTS_MODEL,
-          voice_settings: { stability: STABILITY, similarity_boost: SIMILARITY },
-        }),
-      },
-    );
+    const upstream = await withSlot(() => callElevenLabs(apiKey, voiceId, text));
 
     if (!upstream.ok) {
       const detail = await upstream.text().catch(() => "");

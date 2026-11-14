@@ -15,13 +15,48 @@ function apiKey(): string {
   return key;
 }
 
+export interface QuotaInfo {
+  /** Which free-tier limit was hit. */
+  kind: "day" | "tokens" | "minute" | "unknown";
+  /** Seconds Gemini asked us to wait, if it said. */
+  retrySeconds: number | null;
+}
+
+/** Reads Gemini's 429 body to learn *which* limit was hit and how long to wait. */
+export function parseQuota(body: string): QuotaInfo {
+  let retrySeconds: number | null = null;
+  let ids = "";
+  try {
+    const details: any[] = JSON.parse(body)?.error?.details ?? [];
+    for (const d of details) {
+      if (typeof d?.retryDelay === "string") retrySeconds = Math.ceil(parseFloat(d.retryDelay));
+      for (const v of d?.violations ?? []) ids += ` ${v?.quotaId ?? ""} ${v?.quotaMetric ?? ""}`;
+    }
+  } catch {
+    /* body is not JSON */
+  }
+  if (retrySeconds === null) {
+    const m = body.match(/retry in ([\d.]+)s/i);
+    if (m) retrySeconds = Math.ceil(parseFloat(m[1]));
+  }
+  const hay = `${ids} ${body}`;
+  let kind: QuotaInfo["kind"] = "unknown";
+  if (/PerDay/i.test(hay)) kind = "day";
+  else if (/token/i.test(ids) && /PerMinute/i.test(ids)) kind = "tokens";
+  else if (/PerMinute/i.test(hay)) kind = "minute";
+  return { kind, retrySeconds };
+}
+
 export function friendlyGeminiError(status: number, text: string, model: string): string {
   if (status === 429) {
-    const retryMatch = text.match(/retry in ([\d.]+)s/i);
-    const seconds = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : null;
-    return seconds
-      ? `Free tier limit hit — try again in about ${seconds} seconds.`
-      : "Free tier request limit hit for this minute — wait a bit and try again.";
+    const q = parseQuota(text);
+    const wait = q.retrySeconds ? ` Try again in about ${q.retrySeconds} seconds.` : "";
+    if (q.kind === "day")
+      return `The free daily quota for ${model} is used up. It resets at midnight Pacific time (about 2 PM in Dhaka). Switch to another Gemini model in Jerin's settings to keep going now.`;
+    if (q.kind === "tokens")
+      return `That request is bigger than the free per-minute token limit (videos cost thousands of tokens per minute of footage).${wait || " Wait a minute, or send a shorter clip."}`;
+    if (q.kind === "minute") return `Too many requests for this minute on the free tier.${wait || " Wait a moment and try again."}`;
+    return `Gemini says the free-tier quota for ${model} is exhausted right now.${wait}`;
   }
   if (status === 404) return `Model ${model} isn't available on your key — pick a different model in Jerin's settings.`;
   if (status === 503) return "Gemini is overloaded right now — try again in a moment.";
@@ -80,7 +115,7 @@ export async function generateOnce(model: string, body: unknown, signal?: AbortS
   return JSON.parse(text);
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export interface UploadedFile {
   name: string;
