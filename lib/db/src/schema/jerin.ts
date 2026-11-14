@@ -12,6 +12,8 @@ export interface JerinAttachment {
   mimeType: string;
   /** Gemini Files API URI (valid ~48h). Absent for inline voice notes. */
   fileUri?: string;
+  /** Which API key (project) owns fileUri. Only that key can read the file. */
+  keyId?: string;
   /** Epoch ms when the file was uploaded to Gemini, used to skip expired files in history. */
   uploadedAt?: number;
   /** Small data-URL preview (images / video poster) kept so old chats still show something. */

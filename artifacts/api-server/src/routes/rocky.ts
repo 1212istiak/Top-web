@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { requireAdmin } from "../middlewares/auth";
 import { logger } from "../lib/logger";
+import { pooledFetch, hasGeminiKeys } from "../lib/gemini";
 import { db, episodesTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 
@@ -119,8 +120,7 @@ router.post("/rocky/generate", requireAdmin, async (req, res): Promise<void> => 
     return;
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  if (!hasGeminiKeys()) {
     logger.error("GEMINI_API_KEY not configured");
     res.status(500).json({ error: "Jerin isn't configured yet (missing API key on the server)." });
     return;
@@ -146,7 +146,6 @@ router.post("/rocky/generate", requireAdmin, async (req, res): Promise<void> => 
     ? (model as GeminiModel)
     : "gemini-3.8-flash";
 
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent`;
   let systemPrompt = SYSTEM_PROMPTS[mode || "chat"] || SYSTEM_PROMPTS.chat;
 
   // Read-only snapshot of the website's episodes so Jerin can answer questions about them
@@ -204,11 +203,7 @@ router.post("/rocky/generate", requireAdmin, async (req, res): Promise<void> => 
   }
 
   try {
-    const response = await fetch(`${geminiUrl}?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
-    });
+    const { res: response } = await pooledFetch(selectedModel, ":generateContent", requestBody);
 
     if (!response.ok) {
       const errText = await response.text();
@@ -324,17 +319,12 @@ router.post("/rocky/execute-action", requireAdmin, async (req, res): Promise<voi
       res.status(400).json({ error: "videoUrl is required." });
       return;
     }
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
+    if (!hasGeminiKeys()) {
       res.status(500).json({ error: "Jerin isn't configured yet (missing API key)." });
       return;
     }
     try {
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent`;
-      const r = await fetch(`${geminiUrl}?key=${apiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { res: r } = await pooledFetch("gemini-3.8-flash", ":generateContent", {
           contents: [{
             role: "user",
             parts: [
@@ -343,8 +333,7 @@ router.post("/rocky/execute-action", requireAdmin, async (req, res): Promise<voi
               { text: "Note: if you're not fully certain of a character's name, say so (e.g. 'possibly Yun Yun') rather than stating it as fact — BTTH has many characters with similar designs and misidentification is common for AI video analysis." },
             ],
           }],
-        }),
-      });
+        });
       const data: any = await r.json();
       if (!r.ok) throw new Error(data?.error?.message || "Video analysis failed.");
       const text = data?.candidates?.[0]?.content?.parts?.filter((p: any) => p.text).map((p: any) => p.text).join("") || "No analysis returned.";
@@ -362,25 +351,19 @@ router.post("/rocky/execute-action", requireAdmin, async (req, res): Promise<voi
       res.status(400).json({ error: "episodeContext is required." });
       return;
     }
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
+    if (!hasGeminiKeys()) {
       res.status(500).json({ error: "Jerin isn't configured yet (missing API key)." });
       return;
     }
     try {
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent`;
-      const r = await fetch(`${geminiUrl}?key=${apiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { res: r } = await pooledFetch("gemini-3.8-flash", ":generateContent", {
           contents: [{
             role: "user",
             parts: [{
               text: `Write a detailed thumbnail design spec for a Bangla BTTH dubbing YouTube/Facebook thumbnail, based on: ${episodeContext}. Include: composition/layout, key characters and their pose/expression, color palette and lighting mood, any text overlay wording (in Bangla or English, whichever hits harder), and overall vibe. This is a design brief the user (or a designer) will use to actually create the image — not the image itself.`,
             }],
           }],
-        }),
-      });
+        });
       const data: any = await r.json();
       if (!r.ok) throw new Error(data?.error?.message || "Thumbnail spec generation failed.");
       const text = data?.candidates?.[0]?.content?.parts?.filter((p: any) => p.text).map((p: any) => p.text).join("") || "No spec returned.";

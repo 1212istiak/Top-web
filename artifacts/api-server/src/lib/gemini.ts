@@ -4,15 +4,218 @@ export class GeminiError extends Error {
   constructor(
     public status: number,
     public body: string,
+    /** Ready-to-show message (used when the key pool, not Gemini, produced the failure). */
+    public friendly?: string,
   ) {
     super(`Gemini ${status}`);
   }
 }
 
-function apiKey(): string {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new GeminiError(500, "GEMINI_API_KEY missing");
-  return key;
+// ---------------------------------------------------------------------------
+// API key pool
+//
+// Keys come from GEMINI_API_KEY (key 1) and GEMINI_API_KEY_2 ... GEMINI_API_KEY_9, tried strictly in
+// that order and strictly ONE AT A TIME: a request goes to the first key that is available, and only
+// if Gemini rejects it for quota/invalid-key reasons *before producing anything* does the same
+// request move to the next key. The same task is never sent to two keys at once.
+// A key that ran out of quota rests until its limit is likely back (daily limits reset at midnight
+// Pacific) instead of being retried on every message.
+// ---------------------------------------------------------------------------
+import { createHash } from "node:crypto";
+
+export interface KeyInfo {
+  id: string;
+  label: string;
+  key: string;
+}
+
+const idCache = new Map<string, string>();
+function idOf(key: string): string {
+  let id = idCache.get(key);
+  if (!id) {
+    id = "k" + createHash("sha256").update(key).digest("hex").slice(0, 8);
+    idCache.set(key, id);
+  }
+  return id;
+}
+
+export function geminiKeys(): KeyInfo[] {
+  const raw: string[] = [process.env.GEMINI_API_KEY ?? ""];
+  for (let i = 2; i <= 9; i++) raw.push(process.env[`GEMINI_API_KEY_${i}`] ?? "");
+  const out: KeyInfo[] = [];
+  const seen = new Set<string>();
+  raw.forEach((k, i) => {
+    const key = k.trim();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push({ id: idOf(key), label: `Key ${i + 1}`, key });
+  });
+  return out;
+}
+
+export const hasGeminiKeys = (): boolean => geminiKeys().length > 0;
+
+interface Rest {
+  until: number;
+  reason: string;
+}
+const resting = new Map<string, Rest>(); // `${keyId}|${model}` -> quota rest (quotas are per model)
+const disabled = new Map<string, Rest>(); // keyId -> invalid / suspended key
+
+/** Milliseconds until the next midnight in Pacific time, when Gemini daily quotas reset. */
+function msUntilPacificMidnight(now = new Date()): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(now);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0) % 24;
+  const since = (get("hour") * 3600 + get("minute") * 60 + get("second")) * 1000;
+  return 24 * 3600_000 - since + 60_000;
+}
+
+/** Decides whether a failed response means "this key is out", and for how long. */
+function classifyKeyFailure(status: number, text: string): { ms: number; reason: string; invalid?: boolean } | null {
+  if (status === 429) {
+    const q = parseQuota(text);
+    if (/limit:\s*0\b/.test(text)) return { ms: 6 * 3600_000, reason: "no free allowance (limit 0)" };
+    if (q.kind === "day") return { ms: msUntilPacificMidnight(), reason: "daily quota used up" };
+    if (q.kind === "minute" || q.kind === "tokens") return { ms: ((q.retrySeconds ?? 60) + 1) * 1000, reason: "per-minute limit" };
+    return { ms: 20 * 60_000, reason: "quota exhausted" };
+  }
+  if (status === 400 && /API key not valid|API_KEY_INVALID/i.test(text)) return { ms: 6 * 3600_000, reason: "invalid key", invalid: true };
+  if (status === 403 && !/file/i.test(text) && /PERMISSION_DENIED|API key|leaked|suspend|disabled|denied/i.test(text))
+    return { ms: 6 * 3600_000, reason: "key rejected", invalid: true };
+  return null;
+}
+
+function markFailed(k: KeyInfo, model: string, f: { ms: number; reason: string; invalid?: boolean }) {
+  const rest = { until: Date.now() + f.ms, reason: f.reason };
+  if (f.invalid) disabled.set(k.id, rest);
+  else resting.set(`${k.id}|${model}`, rest);
+  console.warn(`[gemini-keys] ${k.label} resting ${Math.round(f.ms / 1000)}s for ${model}: ${f.reason}`);
+}
+
+function restOf(k: KeyInfo, model: string): Rest | null {
+  const now = Date.now();
+  const d = disabled.get(k.id);
+  if (d && d.until > now) return d;
+  const r = resting.get(`${k.id}|${model}`);
+  if (r && r.until > now) return r;
+  return null;
+}
+
+/** First key in order that is not resting for this model (optionally limited to certain key ids). */
+function pickKey(model: string, allowed?: string[]): KeyInfo | null {
+  for (const k of geminiKeys()) {
+    if (allowed && !allowed.includes(k.id)) continue;
+    if (!restOf(k, model)) return k;
+  }
+  return null;
+}
+
+export function keyPoolStatus() {
+  const now = Date.now();
+  return geminiKeys().map((k) => {
+    const d = disabled.get(k.id);
+    const rests = [...resting.entries()].filter(([key, r]) => key.startsWith(k.id + "|") && r.until > now);
+    if (d && d.until > now) return { label: k.label, id: k.id, state: "disabled" as const, reason: d.reason, resumesInSec: Math.round((d.until - now) / 1000) };
+    if (rests.length)
+      return {
+        label: k.label,
+        id: k.id,
+        state: "resting" as const,
+        reason: `${rests.map(([key]) => key.split("|")[1]).join(", ")}: ${rests[0][1].reason}`,
+        resumesInSec: Math.round((Math.min(...rests.map(([, r]) => r.until)) - now) / 1000),
+      };
+    return { label: k.label, id: k.id, state: "ready" as const };
+  });
+}
+
+export function keyLabel(id: string): string {
+  return geminiKeys().find((k) => k.id === id)?.label ?? "another key";
+}
+
+function exhaustedMessage(model: string, allowed?: string[]): string {
+  const keys = geminiKeys().filter((k) => !allowed || allowed.includes(k.id));
+  const soonest = Math.min(...keys.map((k) => (restOf(k, model)?.until ?? Date.now()) - Date.now()));
+  const mins = Math.max(1, Math.ceil(soonest / 60_000));
+  const when = mins >= 90 ? `about ${Math.round(mins / 60)} hours` : `about ${mins} min`;
+  if (allowed && allowed.length && keys.length < geminiKeys().length)
+    return `The API key that holds your attached file (${keys.map((k) => k.label).join(", ")}) is out of quota for ${model}, and files can only be read by the key that received them. It frees up in ${when}, or attach the file again after switching.`;
+  if (keys.length <= 1)
+    return `The only API key is out of quota for ${model} (back in ${when}). Add more keys on the server as GEMINI_API_KEY_2, GEMINI_API_KEY_3 and so on.`;
+  return `All ${keys.length} API keys are out of quota for ${model}. The soonest frees up in ${when} (daily limits reset around 2 PM Dhaka time). Try another model in Jerin's settings meanwhile.`;
+}
+
+export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export interface PoolOptions {
+  signal?: AbortSignal;
+  /** Only these keys may be used (e.g. the key that owns an uploaded file). */
+  allowedKeyIds?: string[];
+  /** Called when a request moves from one key to the next. */
+  onSwitch?: (from: string, to: string, reason: string) => void;
+}
+
+export interface PooledResult {
+  res: Response;
+  key: KeyInfo | null;
+  /** Set when no key could serve the request; res is then a synthetic 429. */
+  exhausted?: string;
+}
+
+/**
+ * POSTs to a Gemini endpoint using the first available key, moving on to the next key (one at a
+ * time) when Gemini rejects the request for quota or key reasons. `body` may be a function of the
+ * key id so per-key content (uploaded-file references) can be rebuilt for whichever key serves it.
+ */
+export async function pooledFetch(
+  model: string,
+  path: string,
+  body: unknown | ((keyId: string) => unknown),
+  opts: PoolOptions = {},
+): Promise<PooledResult> {
+  let waited = false;
+  let last: { res: Response; key: KeyInfo } | null = null;
+  let previous: KeyInfo | null = null;
+
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const key = pickKey(model, opts.allowedKeyIds);
+    if (!key) {
+      // Everything is resting. If a key frees up within seconds (per-minute limit), wait for it once.
+      const candidates = geminiKeys().filter((k) => !opts.allowedKeyIds || opts.allowedKeyIds.includes(k.id));
+      const soonest = Math.min(...candidates.map((k) => (restOf(k, model)?.until ?? Infinity) - Date.now()));
+      if (candidates.length && !waited && soonest <= 45_000 && !opts.signal?.aborted) {
+        waited = true;
+        await sleep(Math.max(500, soonest + 250));
+        continue;
+      }
+      const msg = candidates.length ? exhaustedMessage(model, opts.allowedKeyIds) : "No Gemini API key is configured on the server (set GEMINI_API_KEY).";
+      const text = JSON.stringify({ error: { code: 429, message: msg } });
+      return { res: new Response(text, { status: 429, headers: { "content-type": "application/json" } }), key: null, exhausted: msg };
+    }
+
+    if (previous && previous.id !== key.id) opts.onSwitch?.(previous.label, key.label, "quota");
+    const payload = typeof body === "function" ? (body as (id: string) => unknown)(key.id) : body;
+    const res = await fetch(`${API_ROOT}/v1beta/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key.key },
+      body: JSON.stringify(payload),
+      signal: opts.signal,
+    });
+    if (res.ok) return { res, key };
+
+    const text = await res.clone().text().catch(() => "");
+    const failure = classifyKeyFailure(res.status, text);
+    if (!failure) return { res, key };
+    markFailed(key, model, failure);
+    last = { res, key };
+    previous = key;
+  }
+  return { res: last!.res, key: last!.key };
 }
 
 export interface QuotaInfo {
@@ -82,16 +285,15 @@ export function friendlyGeminiError(status: number, text: string, model: string)
 /** Streams a generateContent call, yielding each parsed SSE chunk as it arrives. */
 export async function* streamGenerate(
   model: string,
-  body: unknown,
+  body: unknown | ((keyId: string) => unknown),
   signal?: AbortSignal,
+  opts: Omit<PoolOptions, "signal"> = {},
 ): AsyncGenerator<any> {
-  const res = await fetch(`${API_ROOT}/v1beta/models/${model}:streamGenerateContent?alt=sse`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey() },
-    body: JSON.stringify(body),
-    signal,
-  });
-  if (!res.ok || !res.body) throw new GeminiError(res.status, await res.text().catch(() => ""));
+  const { res, exhausted } = await pooledFetch(model, `models/${model}:streamGenerateContent?alt=sse`, body, { ...opts, signal });
+  if (!res.ok || !res.body) {
+    const text = await res.text().catch(() => "");
+    throw new GeminiError(res.status, text, exhausted);
+  }
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -117,33 +319,31 @@ export async function* streamGenerate(
 }
 
 /** Plain (non-streaming) generateContent call. */
-export async function generateOnce(model: string, body: unknown, signal?: AbortSignal): Promise<any> {
-  const res = await fetch(`${API_ROOT}/v1beta/models/${model}:generateContent`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey() },
-    body: JSON.stringify(body),
-    signal,
-  });
+export async function generateOnce(
+  model: string,
+  body: unknown | ((keyId: string) => unknown),
+  signal?: AbortSignal,
+  opts: Omit<PoolOptions, "signal"> = {},
+): Promise<any> {
+  const { res, exhausted } = await pooledFetch(model, `models/${model}:generateContent`, body, { ...opts, signal });
   const text = await res.text();
-  if (!res.ok) throw new GeminiError(res.status, text);
+  if (!res.ok) throw new GeminiError(res.status, text, exhausted);
   return JSON.parse(text);
 }
-
-export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export interface UploadedFile {
   name: string;
   uri: string;
   mimeType: string;
+  /** The key (project) that now owns this file. Only that key can read it later. */
+  keyId: string;
 }
 
-/** Uploads bytes to the Gemini Files API (resumable protocol) and waits until the file is usable. */
-export async function uploadToGeminiFiles(buf: Buffer, mimeType: string, displayName: string): Promise<UploadedFile> {
-  const key = apiKey();
+async function uploadWithKey(k: KeyInfo, buf: Buffer, mimeType: string, displayName: string): Promise<UploadedFile> {
   const start = await fetch(`${API_ROOT}/upload/v1beta/files`, {
     method: "POST",
     headers: {
-      "x-goog-api-key": key,
+      "x-goog-api-key": k.key,
       "X-Goog-Upload-Protocol": "resumable",
       "X-Goog-Upload-Command": "start",
       "X-Goog-Upload-Header-Content-Length": String(buf.length),
@@ -168,11 +368,38 @@ export async function uploadToGeminiFiles(buf: Buffer, mimeType: string, display
   // Video/audio go through a PROCESSING state before they can be used in a prompt.
   for (let i = 0; i < 80 && file?.state === "PROCESSING"; i++) {
     await sleep(1500);
-    const poll = await fetch(`${API_ROOT}/v1beta/${file.name}`, { headers: { "x-goog-api-key": key } });
+    const poll = await fetch(`${API_ROOT}/v1beta/${file.name}`, { headers: { "x-goog-api-key": k.key } });
     if (!poll.ok) throw new GeminiError(poll.status, await poll.text().catch(() => ""));
     file = await poll.json();
   }
   if (!file || file.state === "FAILED") throw new GeminiError(422, "Gemini could not process that file.");
   if (file.state === "PROCESSING") throw new GeminiError(504, "Gemini is still processing that file — try again shortly.");
-  return { name: file.name, uri: file.uri, mimeType: file.mimeType || mimeType };
+  return { name: file.name, uri: file.uri, mimeType: file.mimeType || mimeType, keyId: k.id };
+}
+
+/**
+ * Uploads bytes to the Gemini Files API using the first available key (moving on if a key is out of
+ * quota). The file belongs to that key's project, which is reported back in keyId.
+ */
+export async function uploadToGeminiFiles(buf: Buffer, mimeType: string, displayName: string): Promise<UploadedFile> {
+  let lastErr: unknown = new GeminiError(500, "No Gemini API key is configured on the server (set GEMINI_API_KEY).");
+  for (const k of geminiKeys()) {
+    if (restOf(k, "files")) continue;
+    try {
+      return await uploadWithKey(k, buf, mimeType, displayName);
+    } catch (err) {
+      lastErr = err;
+      if (err instanceof GeminiError) {
+        const f = classifyKeyFailure(err.status, err.body);
+        if (f) {
+          markFailed(k, "files", f);
+          continue;
+        }
+      }
+      throw err;
+    }
+  }
+  if (lastErr instanceof GeminiError && !lastErr.friendly && geminiKeys().length > 1)
+    lastErr.friendly = "Every API key is out of quota for file uploads right now. Try again later.";
+  throw lastErr;
 }

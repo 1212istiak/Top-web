@@ -163,6 +163,20 @@ function MemoryDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
 export function JerinChat({ model, thinking }: { model: string; thinking: boolean }) {
   const { toast } = useToast();
 
+  const [keyStatus, setKeyStatus] = useState<{ ready: number; total: number } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      apiJson<{ keys: { state: string }[] }>("/keys")
+        .then((d) => alive && setKeyStatus({ ready: d.keys.filter((k) => k.state === "ready").length, total: d.keys.length }))
+        .catch(() => {});
+    load();
+    const t = setInterval(load, 60000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, []);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -372,7 +386,7 @@ export function JerinChat({ model, thinking }: { model: string; thinking: boolea
               patchPending(key, {
                 status: "ready",
                 progress: 100,
-                att: { kind, name: file.name, mimeType: r.mimeType, fileUri: r.fileUri, uploadedAt: r.uploadedAt },
+                att: { kind, name: file.name, mimeType: r.mimeType, fileUri: r.fileUri, uploadedAt: r.uploadedAt, keyId: r.keyId },
               }),
             )
             .catch((err: Error) => {
@@ -789,6 +803,11 @@ export function JerinChat({ model, thinking }: { model: string; thinking: boolea
           >
             <MessageSquarePlus className="h-4 w-4" /> New chat
           </button>
+          {keyStatus && keyStatus.total > 0 && (
+            <div className="px-1 text-[11px] text-muted-foreground">
+              API keys: {keyStatus.ready}/{keyStatus.total} ready
+            </div>
+          )}
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <input

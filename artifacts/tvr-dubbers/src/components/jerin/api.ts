@@ -10,6 +10,7 @@ export interface Attachment {
   mimeType: string;
   fileUri?: string;
   uploadedAt?: number;
+  keyId?: string;
   thumb?: string;
   mediaId?: string;
   generated?: boolean;
@@ -98,7 +99,7 @@ export function uploadFile(
   file: File,
   onProgress: (pct: number) => void,
   mimeOverride?: string,
-): Promise<{ fileUri: string; mimeType: string; uploadedAt: number }> {
+): Promise<{ fileUri: string; mimeType: string; uploadedAt: number; keyId?: string }> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${API_BASE}/api/rocky/upload`, true);

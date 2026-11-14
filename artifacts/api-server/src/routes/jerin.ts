@@ -17,8 +17,10 @@ import { buildSiteContext, loadMemory } from "../lib/site-context";
 import {
   GeminiError,
   friendlyGeminiError,
-  parseQuota,
-  sleep,
+  geminiKeys,
+  hasGeminiKeys,
+  keyLabel,
+  keyPoolStatus,
   generateOnce,
   streamGenerate,
   uploadToGeminiFiles,
@@ -180,12 +182,18 @@ function isFresh(a: JerinAttachment): boolean {
   return !!a.fileUri && !!a.uploadedAt && Date.now() - a.uploadedAt < FILE_TTL_MS;
 }
 
-function attachmentParts(atts: JerinAttachment[] | null | undefined): Part[] {
+// Uploaded files belong to the API key (Google project) that received them; other keys can't read
+// them. Files from before key rotation existed have no keyId and belong to the first key.
+const ownerOf = (a: JerinAttachment): string | undefined => a.keyId ?? geminiKeys()[0]?.id;
+const usableBy = (a: JerinAttachment, keyId?: string): boolean => isFresh(a) && (!keyId || ownerOf(a) === keyId);
+
+function attachmentParts(atts: JerinAttachment[] | null | undefined, keyId?: string): Part[] {
   const parts: Part[] = [];
   for (const a of atts ?? []) {
-    if (isFresh(a)) parts.push({ fileData: { mimeType: a.mimeType, fileUri: a.fileUri } });
+    if (usableBy(a, keyId)) parts.push({ fileData: { mimeType: a.mimeType, fileUri: a.fileUri } });
     else if (a.kind === "audio" && !a.fileUri) continue; // voice note: its transcript is the message text
     else if (a.generated) parts.push({ text: `[an image Jerin generated earlier: ${a.name}]` });
+    else if (isFresh(a)) parts.push({ text: `[attached ${a.kind} "${a.name}" is stored on a different API key, so it can't be viewed in this reply]` });
     else parts.push({ text: `[attached ${a.kind} "${a.name}" — no longer available to view]` });
   }
   return parts;
@@ -198,9 +206,9 @@ function pushContent(contents: Content[], role: "user" | "model", parts: Part[])
   else contents.push({ role, parts });
 }
 
-function messageToContent(m: typeof jerinMessagesTable.$inferSelect): Content {
+function messageToContent(m: typeof jerinMessagesTable.$inferSelect, keyId?: string): Content {
   if (m.role === "user") {
-    const parts = [...attachmentParts(m.attachments), ...(m.text ? [{ text: m.text }] : [])];
+    const parts = [...attachmentParts(m.attachments, keyId), ...(m.text ? [{ text: m.text }] : [])];
     return { role: "user", parts: parts.length ? parts : [{ text: "(empty message)" }] };
   }
   let text = m.text || "";
@@ -224,6 +232,11 @@ function sse(res: Response, data: Record<string, unknown>) {
 // ---------------------------------------------------------------------------
 // Sessions
 // ---------------------------------------------------------------------------
+// Which API keys are loaded and which are resting (never exposes key material).
+router.get("/rocky/keys", requireAdmin, (_req, res): void => {
+  res.json({ keys: keyPoolStatus() });
+});
+
 router.get("/rocky/sessions", requireAdmin, async (req, res): Promise<void> => {
   try {
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
@@ -384,11 +397,11 @@ router.post(
     }
     try {
       const file = await uploadToGeminiFiles(body, mimeType, name);
-      res.json({ fileUri: file.uri, mimeType: file.mimeType, name, uploadedAt: Date.now() });
+      res.json({ fileUri: file.uri, mimeType: file.mimeType, name, uploadedAt: Date.now(), keyId: file.keyId });
     } catch (err) {
       logger.error({ err }, "Gemini file upload failed");
       if (err instanceof GeminiError) {
-        res.status(502).json({ error: err.status === 422 || err.status === 504 ? (err.body || "Gemini couldn't process that file.") : friendlyGeminiError(err.status, err.body, "files") });
+        res.status(502).json({ error: err.status === 422 || err.status === 504 ? (err.body || "Gemini couldn't process that file.") : (err.friendly ?? friendlyGeminiError(err.status, err.body, "files")) });
       } else {
         res.status(500).json({ error: "Upload failed." });
       }
@@ -399,9 +412,16 @@ router.post(
 // ---------------------------------------------------------------------------
 // Auto tools (run server-side during a reply)
 // ---------------------------------------------------------------------------
-async function findLatestImagePart(sessionId: string, current: JerinAttachment[]): Promise<Part | null> {
+async function findLatestImagePart(
+  sessionId: string,
+  current: JerinAttachment[],
+): Promise<{ part: Part; keyId?: string } | null> {
+  const asPart = (a: JerinAttachment) => ({
+    part: { fileData: { mimeType: a.mimeType, fileUri: a.fileUri } } as Part,
+    keyId: ownerOf(a),
+  });
   const fromCurrent = [...current].reverse().find((a) => a.kind === "image" && isFresh(a));
-  if (fromCurrent) return { fileData: { mimeType: fromCurrent.mimeType, fileUri: fromCurrent.fileUri } };
+  if (fromCurrent) return asPart(fromCurrent);
 
   const rows = await db
     .select()
@@ -414,9 +434,9 @@ async function findLatestImagePart(sessionId: string, current: JerinAttachment[]
       if (a.kind !== "image") continue;
       if (a.mediaId) {
         const [media] = await db.select().from(jerinMediaTable).where(eq(jerinMediaTable.id, a.mediaId));
-        if (media) return { inlineData: { mimeType: media.mimeType, data: media.data.toString("base64") } };
+        if (media) return { part: { inlineData: { mimeType: media.mimeType, data: media.data.toString("base64") } } };
       }
-      if (isFresh(a)) return { fileData: { mimeType: a.mimeType, fileUri: a.fileUri } };
+      if (isFresh(a)) return asPart(a);
     }
   }
   return null;
@@ -479,10 +499,12 @@ async function runAutoTool(name: string, args: any, ctx: ToolContext): Promise<R
       if (!prompt) return { ok: false, error: "prompt is empty" };
       ctx.emit({ type: "tool", name, label: args?.editExisting ? "Editing image" : "Generating image" });
       const parts: Part[] = [{ text: prompt }];
+      let imageKeyId: string | undefined;
       if (args?.editExisting) {
         const src = await findLatestImagePart(ctx.sessionId, ctx.currentAttachments);
         if (!src) return { ok: false, error: "There is no earlier image in this chat to edit." };
-        parts.unshift(src);
+        parts.unshift(src.part);
+        imageKeyId = src.keyId;
       }
       let data: any;
       try {
@@ -490,6 +512,7 @@ async function runAutoTool(name: string, args: any, ctx: ToolContext): Promise<R
           IMAGE_MODEL,
           { contents: [{ role: "user", parts }], generationConfig: { responseModalities: ["TEXT", "IMAGE"] } },
           ctx.signal,
+          { allowedKeyIds: imageKeyId ? [imageKeyId] : undefined },
         );
       } catch (err) {
         if (err instanceof GeminiError) {
@@ -590,11 +613,11 @@ function buildVariants(base: any, thinking: boolean, toggles: ToolToggles, hasVi
 }
 
 router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Promise<void> => {
-  if (isRateLimited()) {
+  if (isRateLimited(18 * Math.max(1, geminiKeys().length))) {
     res.status(429).json({ error: "Jerin is cooling down — you've hit the free-tier request limit for this minute. Try again shortly." });
     return;
   }
-  if (!process.env.GEMINI_API_KEY) {
+  if (!hasGeminiKeys()) {
     logger.error("GEMINI_API_KEY not configured");
     res.status(500).json({ error: "Jerin isn't configured yet (missing API key on the server)." });
     return;
@@ -749,37 +772,54 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
       : "=== LONG-TERM MEMORY ===\n(empty so far)";
     const systemPrompt = `${PERSONA}\n\n${memoryBlock}\n\n${siteContext}\n\nCurrent date and time: ${dhakaNow()}`;
 
-    const contents: Content[] = [];
-    for (const m of history) pushContent(contents, m.role as "user" | "model", messageToContent(m).parts);
+    // The prompt is rebuilt for whichever API key ends up serving the request, because uploaded files
+    // can only be read by the key that received them. Tool-loop turns are appended unchanged.
+    const extraTurns: Content[] = [];
+    const youtube = body.regenerate ? [] : extractYouTubeUrls(text);
+    const hasVideoInput = youtube.length > 0 || (!body.regenerate && clientAtts.some((a) => a.kind === "video"));
+    const buildContents = (keyId: string): Content[] => {
+      const c: Content[] = [];
+      for (const m of history) pushContent(c, m.role as "user" | "model", messageToContent(m, keyId).parts);
+      if (!body.regenerate) {
+        const parts: Part[] = [];
+        for (const a of clientAtts) {
+          if (a.inlineData) parts.push({ inlineData: { mimeType: a.mimeType, data: a.inlineData } });
+          else if (usableBy(a, keyId)) parts.push({ fileData: { mimeType: a.mimeType, fileUri: a.fileUri } });
+          else if (isFresh(a)) parts.push({ text: `[attached ${a.kind} "${a.name}" is stored on a different API key and can't be viewed]` });
+        }
+        for (const url of youtube) parts.push({ fileData: { fileUri: url } });
+        if (text) parts.push({ text });
+        if (audioOnly) {
+          parts.push({
+            text: "The attached audio is the user's spoken message (it may mix Bangla and English). First write the exact transcription wrapped like <<T>>transcription<<E>>, then immediately answer it normally, in the language the user spoke.",
+          });
+        } else if (!text && parts.length) {
+          parts.push({ text: "Take a look at what I attached and tell me what you see, then suggest useful next steps." });
+        }
+        pushContent(c, "user", parts);
+      }
+      c.push(...extraTurns);
+      return c;
+    };
 
-    let hasVideoInput = false;
-    if (!body.regenerate) {
-      const parts: Part[] = [];
-      for (const a of clientAtts) {
-        if (a.inlineData) parts.push({ inlineData: { mimeType: a.mimeType, data: a.inlineData } });
-        else if (isFresh(a)) parts.push({ fileData: { mimeType: a.mimeType, fileUri: a.fileUri } });
-      }
-      const youtube = extractYouTubeUrls(text);
-      for (const url of youtube) parts.push({ fileData: { fileUri: url } });
-      hasVideoInput = youtube.length > 0 || clientAtts.some((a) => a.kind === "video");
-      if (text) parts.push({ text });
-      if (audioOnly) {
-        parts.push({
-          text: "The attached audio is the user's spoken message (it may mix Bangla and English). First write the exact transcription wrapped like <<T>>transcription<<E>>, then immediately answer it normally, in the language the user spoke.",
-        });
-      } else if (!text && parts.length) {
-        parts.push({ text: "Take a look at what I attached and tell me what you see, then suggest useful next steps." });
-      }
-      pushContent(contents, "user", parts);
+    // Files in this turn pin the request to the key that owns them.
+    const turnAtts = body.regenerate ? (history[history.length - 1]?.attachments ?? []) : clientAtts;
+    const owners = [...new Set(turnAtts.filter((a: any) => !a.inlineData && isFresh(a)).map(ownerOf))].filter(Boolean) as string[];
+    if (owners.length > 1) {
+      throw new GeminiError(
+        400,
+        "",
+        `Your attachments are stored on different API keys (${owners.map(keyLabel).join(", ")}), and one reply can only use one key. Attach them again together, or send them one at a time.`,
+      );
     }
+    const lockToKeys = owners.length === 1 ? owners : undefined;
 
     // ---- Stream with tool loop ------------------------------------------------------------
     const baseBody = { systemInstruction: { parts: [{ text: systemPrompt }] } };
     const variants = buildVariants(baseBody, thinking, toggles, hasVideoInput);
     const variantKey = toggles.search || toggles.code ? "builtins" : "plain";
     let variantIdx = Math.min(startVariant[variantKey], variants.length - 1);
-    let notice: string | null = null;
-    let rateWaits = 0;
+    const notices: string[] = [];
     const sourceSet = new Map<string, string>();
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -791,9 +831,15 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
       let succeeded = false;
 
       for (;;) {
-        const requestBody = { ...variants[variantIdx], contents };
         try {
-          for await (const chunk of streamGenerate(model, requestBody, ac.signal)) {
+          const stream = streamGenerate(model, (keyId: string) => ({ ...variants[variantIdx], contents: buildContents(keyId) }), ac.signal, {
+            allowedKeyIds: lockToKeys,
+            onSwitch: (from, to) => {
+              const msg = `${from} ran out of quota, so this reply was answered by ${to}.`;
+              if (!notices.includes(msg)) notices.push(msg);
+            },
+          });
+          for await (const chunk of stream) {
             succeeded = true;
             const cand = chunk?.candidates?.[0];
             for (const p of cand?.content?.parts ?? []) {
@@ -848,24 +894,13 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
           }
           break; // stream finished
         } catch (err) {
-          // Short per-minute limit hit before any text arrived: wait it out instead of failing.
-          if (err instanceof GeminiError && err.status === 429 && !succeeded && rateWaits < 2) {
-            const q = parseQuota(err.body);
-            if ((q.kind === "minute" || q.kind === "tokens") && q.retrySeconds && q.retrySeconds <= 40) {
-              rateWaits++;
-              emit({ type: "tool", name: "wait", label: `Free-tier limit — retrying in ${q.retrySeconds}s` });
-              await sleep((q.retrySeconds + 1) * 1000);
-              if (ac.signal.aborted) throw err;
-              continue;
-            }
-          }
           const retryable = err instanceof GeminiError && err.status === 400 && !succeeded && variantIdx < variants.length - 1;
           if (!retryable) throw err;
           logger.warn({ variantIdx, body: (err as GeminiError).body.slice(0, 300) }, "Gemini rejected request variant, falling back");
           variantIdx++;
           // Variants 2+ (with built-in tools requested) no longer include the site-action functions.
           if (variantKey === "builtins" && variantIdx >= 2) {
-            notice = "Site actions are paused while Search/Code is on for this model. Turn them off if you want me to edit the site.";
+            notices.push("Site actions are paused while Search/Code is on for this model. Turn them off if you want me to edit the site.");
           }
         }
       }
@@ -904,12 +939,12 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
           : { ok: false, error: `Unknown function ${c.name}` };
         responseParts.push({ functionResponse: { name: c.name, response: result } });
       }
-      contents.push({ role: "model", parts: rawParts.filter((p) => !p.thought) }, { role: "user", parts: responseParts });
+      extraTurns.push({ role: "model", parts: rawParts.filter((p) => !p.thought) }, { role: "user", parts: responseParts });
     }
 
     sources = [...sourceSet].map(([uri, title]) => ({ title, uri })).slice(0, 8);
     if (sources.length) emit({ type: "sources", sources });
-    if (notice) emit({ type: "notice", text: notice });
+    if (notices.length) emit({ type: "notice", text: notices.join(" ") });
 
     // Voice notes: store what the user said so future turns (and old chats) keep the text.
     if (audioOnly && userMessageId) {
@@ -963,7 +998,7 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
       /* ignore */
     }
     const message =
-      err instanceof GeminiError ? friendlyGeminiError(err.status, err.body, model) : "Something went wrong talking to Jerin's brain.";
+      err instanceof GeminiError ? (err.friendly ?? friendlyGeminiError(err.status, err.body, model)) : "Something went wrong talking to Jerin's brain.";
     emit({ type: "error", message });
     if (!res.writableEnded) res.end();
   }
