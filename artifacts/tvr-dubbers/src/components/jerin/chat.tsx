@@ -825,8 +825,8 @@ export function JerinChat({ model, thinking }: { model: string; thinking: boolea
               <ul className="mt-1.5 space-y-1">
                 {keyTest.map((r) => (
                   <li key={r.label} className="rounded-lg bg-white/5 px-2 py-1">
-                    <span className={r.status === "ok" ? "text-emerald-400" : r.status === "no_quota" ? "text-amber-400" : "text-rose-400"}>
-                      {r.status === "ok" ? "✓" : r.status === "no_quota" ? "!" : "✗"}
+                    <span className={r.status === "ok" ? "text-emerald-400" : r.status === "no_quota" || r.status === "overloaded" ? "text-amber-400" : "text-rose-400"}>
+                      {r.status === "ok" ? "✓" : r.status === "no_quota" || r.status === "overloaded" ? "!" : "✗"}
                     </span>{" "}
                     <b>{r.label}</b> {r.hint ? <span className="opacity-70">({r.hint})</span> : null} — {r.message}
                     {r.status === "not_set" && r.envName ? <span className="opacity-70"> Variable: {r.envName}</span> : null}

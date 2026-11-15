@@ -141,7 +141,7 @@ export interface KeyTestResult {
   label: string;
   envName: string;
   hint?: string;
-  status: "ok" | "no_quota" | "invalid" | "error" | "not_set";
+  status: "ok" | "no_quota" | "invalid" | "overloaded" | "error" | "not_set";
   message: string;
 }
 
@@ -166,7 +166,7 @@ export async function testKeys(model: string): Promise<KeyTestResult[]> {
           contents: [{ role: "user", parts: [{ text: "Reply with the single word OK." }] }],
           generationConfig: { maxOutputTokens: 16, thinkingConfig: { thinkingBudget: 0 } },
         }),
-        signal: AbortSignal.timeout(20000),
+        signal: AbortSignal.timeout(30000),
       });
       const text = await res.text();
       if (res.ok) {
@@ -179,9 +179,10 @@ export async function testKeys(model: string): Promise<KeyTestResult[]> {
       if (f) markFailed(k, model, f);
       if (f?.invalid) results.push({ label, envName: envNames[i], hint: hintOf(k.key), status: "invalid", message: "Google rejected this key. It is wrong, deleted, or restricted — copy it again." });
       else if (f) results.push({ label, envName: envNames[i], hint: hintOf(k.key), status: "no_quota", message: `Valid, but out of quota right now (${f.reason}).` });
+      else if (res.status >= 500) results.push({ label, envName: envNames[i], hint: hintOf(k.key), status: "overloaded", message: `Key accepted, but Google's servers are overloaded for ${model} right now (HTTP ${res.status}). Not a key problem.` });
       else results.push({ label, envName: envNames[i], hint: hintOf(k.key), status: "error", message: `Unexpected reply from Google (HTTP ${res.status}).` });
     } catch {
-      results.push({ label, envName: envNames[i], hint: hintOf(k.key), status: "error", message: "Couldn't reach Google to test this key." });
+      results.push({ label, envName: envNames[i], hint: hintOf(k.key), status: "error", message: "Google didn't answer in time (its servers may be slow) — this says nothing about the key itself. Try again." });
     }
   }
   return results;
@@ -204,6 +205,12 @@ function exhaustedMessage(model: string, allowed?: string[]): string {
 }
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+const HEADER_TIMEOUT_MS = 45_000; // Gemini must start answering within this long
+const STALL_TIMEOUT_MS = 60_000; // ...and must not go silent for this long mid-answer
+
+const slowMessage = (s: number) =>
+  `Gemini didn't respond within ${s} seconds — Google's servers look slow or overloaded right now. Try again in a moment, or switch to another model in Jerin's settings.`;
 
 export interface PoolOptions {
   signal?: AbortSignal;
@@ -253,12 +260,29 @@ export async function pooledFetch(
 
     if (previous && previous.id !== key.id) opts.onSwitch?.(previous.label, key.label, "quota");
     const payload = typeof body === "function" ? (body as (id: string) => unknown)(key.id) : body;
-    const res = await fetch(`${API_ROOT}/v1beta/${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": key.key },
-      body: JSON.stringify(payload),
-      signal: opts.signal,
-    });
+    const ctl = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      ctl.abort();
+    }, HEADER_TIMEOUT_MS);
+    const onAbort = () => ctl.abort();
+    opts.signal?.addEventListener("abort", onAbort, { once: true });
+    let res: Response;
+    try {
+      res = await fetch(`${API_ROOT}/v1beta/${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": key.key },
+        body: JSON.stringify(payload),
+        signal: ctl.signal,
+      });
+    } catch (err) {
+      if (timedOut && !opts.signal?.aborted) throw new GeminiError(504, "", slowMessage(HEADER_TIMEOUT_MS / 1000));
+      throw err;
+    } finally {
+      clearTimeout(timer);
+      opts.signal?.removeEventListener("abort", onAbort);
+    }
     if (res.ok) return { res, key };
 
     const text = await res.clone().text().catch(() => "");
@@ -352,7 +376,18 @@ export async function* streamGenerate(
   const decoder = new TextDecoder();
   let buffer = "";
   for (;;) {
-    const { done, value } = await reader.read();
+    let stall: ReturnType<typeof setTimeout> | undefined;
+    const next = await Promise.race([
+      reader.read(),
+      new Promise<"stalled">((resolve) => {
+        stall = setTimeout(() => resolve("stalled"), STALL_TIMEOUT_MS);
+      }),
+    ]).finally(() => clearTimeout(stall));
+    if (next === "stalled") {
+      reader.cancel().catch(() => {});
+      throw new GeminiError(504, "", slowMessage(STALL_TIMEOUT_MS / 1000));
+    }
+    const { done, value } = next;
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
     let idx: number;

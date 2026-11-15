@@ -647,7 +647,8 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
     return;
   }
 
-  const model = ALLOWED_MODELS.includes(body.model ?? "") ? (body.model as string) : DEFAULT_MODEL;
+  let model = ALLOWED_MODELS.includes(body.model ?? "") ? (body.model as string) : DEFAULT_MODEL;
+  const triedModels = new Set<string>([model]);
   const thinking = body.thinking === true;
   const toggles: ToolToggles = { search: body.tools?.search !== false, code: body.tools?.code === true };
 
@@ -901,6 +902,17 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
           }
           break; // stream finished
         } catch (err) {
+          // Google overloaded / slow on this model before anything was produced: try another model.
+          if (err instanceof GeminiError && [500, 502, 503, 504].includes(err.status) && !succeeded && !ac.signal.aborted) {
+            const alt = [...ALLOWED_MODELS].reverse().find((m) => !triedModels.has(m));
+            if (alt) {
+              logger.warn({ from: model, to: alt, status: err.status }, "Gemini unavailable, switching model");
+              notices.push(`${model} isn't responding (Google overloaded), so this reply was answered by ${alt}.`);
+              triedModels.add(alt);
+              model = alt;
+              continue;
+            }
+          }
           const retryable = err instanceof GeminiError && err.status === 400 && !succeeded && variantIdx < variants.length - 1;
           if (!retryable) throw err;
           logger.warn({ variantIdx, body: (err as GeminiError).body.slice(0, 300) }, "Gemini rejected request variant, falling back");
