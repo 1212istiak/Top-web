@@ -58,6 +58,8 @@ export const hasGeminiKeys = (): boolean => geminiKeys().length > 0;
 interface Rest {
   until: number;
   reason: string;
+  /** Google's own words for the rejection. */
+  detail?: string;
 }
 const resting = new Map<string, Rest>(); // `${keyId}|${model}` -> quota rest (quotas are per model)
 const disabled = new Map<string, Rest>(); // keyId -> invalid / suspended key
@@ -82,8 +84,10 @@ function classifyKeyFailure(status: number, text: string): { ms: number; reason:
     const q = parseQuota(text);
     if (/limit:\s*0\b/.test(text)) return { ms: 6 * 3600_000, reason: "no free allowance (limit 0)" };
     if (q.kind === "day") return { ms: msUntilPacificMidnight(), reason: "daily quota used up" };
-    if (q.kind === "minute" || q.kind === "tokens") return { ms: ((q.retrySeconds ?? 60) + 1) * 1000, reason: "per-minute limit" };
-    return { ms: 20 * 60_000, reason: "quota exhausted" };
+    if (q.kind === "minute" || q.kind === "tokens")
+      return { ms: Math.min((q.retrySeconds ?? 60) + 1, 120) * 1000, reason: q.kind === "tokens" ? "per-minute token limit" : "per-minute limit" };
+    // Unrecognised 429: could be a request-specific limit rather than an empty key, so rest briefly only.
+    return { ms: 60_000, reason: "Google refused the request (limit not recognised)" };
   }
   if (status === 400 && /API key not valid|API_KEY_INVALID/i.test(text)) return { ms: 6 * 3600_000, reason: "invalid key", invalid: true };
   if (status === 403 && !/file/i.test(text) && /PERMISSION_DENIED|API key|leaked|suspend|disabled|denied/i.test(text))
@@ -91,8 +95,8 @@ function classifyKeyFailure(status: number, text: string): { ms: number; reason:
   return null;
 }
 
-function markFailed(k: KeyInfo, model: string, f: { ms: number; reason: string; invalid?: boolean }) {
-  const rest = { until: Date.now() + f.ms, reason: f.reason };
+function markFailed(k: KeyInfo, model: string, f: { ms: number; reason: string; invalid?: boolean }, detail?: string) {
+  const rest: Rest = { until: Date.now() + f.ms, reason: f.reason, detail };
   if (f.invalid) disabled.set(k.id, rest);
   else resting.set(`${k.id}|${model}`, rest);
   console.warn(`[gemini-keys] ${k.label} resting ${Math.round(f.ms / 1000)}s for ${model}: ${f.reason}`);
@@ -176,7 +180,7 @@ export async function testKeys(model: string): Promise<KeyTestResult[]> {
         continue;
       }
       const f = classifyKeyFailure(res.status, text);
-      if (f) markFailed(k, model, f);
+      if (f) markFailed(k, model, f, geminiReason(text));
       if (f?.invalid) results.push({ label, envName: envNames[i], hint: hintOf(k.key), status: "invalid", message: "Google rejected this key. It is wrong, deleted, or restricted — copy it again." });
       else if (f) results.push({ label, envName: envNames[i], hint: hintOf(k.key), status: "no_quota", message: `Valid, but out of quota right now (${f.reason}).` });
       else if (res.status >= 500) results.push({ label, envName: envNames[i], hint: hintOf(k.key), status: "overloaded", message: `Key accepted, but Google's servers are overloaded for ${model} right now (HTTP ${res.status}). Not a key problem.` });
@@ -201,7 +205,13 @@ function exhaustedMessage(model: string, allowed?: string[]): string {
     return `The API key that holds your attached file (${keys.map((k) => k.label).join(", ")}) is out of quota for ${model}, and files can only be read by the key that received them. It frees up in ${when}, or attach the file again after switching.`;
   if (keys.length <= 1)
     return `The only API key is out of quota for ${model} (back in ${when}). Add more keys on the server as GEMINI_API_KEY_2, GEMINI_API_KEY_3 and so on.`;
-  return `All ${keys.length} API keys are out of quota for ${model}. The soonest frees up in ${when} (daily limits reset around 2 PM Dhaka time). Try another model in Jerin's settings meanwhile.`;
+  const rests = keys.map((k) => restOf(k, model)).filter((r): r is Rest => !!r);
+  const daily = rests.length > 0 && rests.every((r) => /daily|limit 0/i.test(r.reason));
+  if (!daily) {
+    const said = rests.find((r) => r.detail)?.detail;
+    return `Google rejected this request on all ${keys.length} API keys${said ? ` (Google said: "${said}")` : ""}. That usually means the request itself is too big for the free tier — for example a long YouTube video — rather than the keys being empty. Try a shorter clip, or another model in Jerin's settings. The keys are retried automatically in about ${when}.`;
+  }
+  return `All ${keys.length} API keys have used their daily quota for ${model}. The soonest frees up in ${when} (daily limits reset around 2 PM Dhaka time). Try another model in Jerin's settings meanwhile.`;
 }
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -288,7 +298,7 @@ export async function pooledFetch(
     const text = await res.clone().text().catch(() => "");
     const failure = classifyKeyFailure(res.status, text);
     if (!failure) return { res, key };
-    markFailed(key, model, failure);
+    markFailed(key, model, failure, geminiReason(text));
     last = { res, key };
     previous = key;
   }
