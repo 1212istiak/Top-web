@@ -903,11 +903,13 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
           break; // stream finished
         } catch (err) {
           // Google overloaded / slow on this model before anything was produced: try another model.
-          if (err instanceof GeminiError && [500, 502, 503, 504].includes(err.status) && !succeeded && !ac.signal.aborted) {
+          // Quotas are per model, so when every key is out for this model, another model may still have room.
+          const poolOut = err instanceof GeminiError && err.status === 429 && !!err.friendly && !lockToKeys;
+          if (err instanceof GeminiError && ([500, 502, 503, 504].includes(err.status) || poolOut) && !succeeded && !ac.signal.aborted) {
             const alt = [...ALLOWED_MODELS].reverse().find((m) => !triedModels.has(m));
             if (alt) {
               logger.warn({ from: model, to: alt, status: err.status }, "Gemini unavailable, switching model");
-              notices.push(`${model} isn't responding (Google overloaded), so this reply was answered by ${alt}.`);
+              notices.push(poolOut ? `${model} is out of quota on every key, so this reply was answered by ${alt}.` : `${model} isn't responding (Google overloaded), so this reply was answered by ${alt}.`);
               triedModels.add(alt);
               model = alt;
               continue;

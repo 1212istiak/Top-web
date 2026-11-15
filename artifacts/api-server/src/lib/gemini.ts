@@ -209,7 +209,7 @@ function exhaustedMessage(model: string, allowed?: string[]): string {
   const daily = rests.length > 0 && rests.every((r) => /daily|limit 0/i.test(r.reason));
   if (!daily) {
     const said = rests.find((r) => r.detail)?.detail;
-    return `Google rejected this request on all ${keys.length} API keys${said ? ` (Google said: "${said}")` : ""}. That usually means the request itself is too big for the free tier — for example a long YouTube video — rather than the keys being empty. Try a shorter clip, or another model in Jerin's settings. The keys are retried automatically in about ${when}.`;
+    return `Google rejected this request on all ${keys.length} API keys${said ? ` (Google said: "${said}")` : ""}. It doesn't say which limit, so this is most likely the free quota for ${model} being used up (the daily one resets around 2 PM Dhaka time), or a very large attachment. Try another model in Jerin's settings. The keys are retried automatically in about ${when}.`;
   }
   return `All ${keys.length} API keys have used their daily quota for ${model}. The soonest frees up in ${when} (daily limits reset around 2 PM Dhaka time). Try another model in Jerin's settings meanwhile.`;
 }
