@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button";
 import { Play, Calendar, FolderOpen } from "lucide-react";
 import { format, differenceInSeconds } from "date-fns";
 import { SparkleBackground } from "@/components/sparkle-background";
-import { CursorEffects } from "@/components/cursor-effects";
 import { Reveal } from "@/components/reveal";
 import { Faq } from "@/components/faq";
 import { TaglineReveal } from "@/components/tagline-reveal";
@@ -135,7 +134,6 @@ export function Home() {
         Skip to content
       </a>
       <SparkleBackground />
-      <CursorEffects />
       <Navbar onSelectEpisode={setActiveEpisodeId} />
 
       <main id="main-content" tabIndex={-1} className="container mx-auto px-4 pb-10 focus:outline-none">
