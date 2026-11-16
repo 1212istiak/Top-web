@@ -24,7 +24,8 @@ export function CursorEffects() {
       };
       
       window.addEventListener("mousemove", onMouseMove);
-      
+      document.documentElement.classList.add("custom-cursor-active");
+
       const animate = () => {
         // Dot follows exactly
         if (dotRef.current) {
@@ -46,6 +47,7 @@ export function CursorEffects() {
       
       return () => {
         window.removeEventListener("mousemove", onMouseMove);
+        document.documentElement.classList.remove("custom-cursor-active");
         if (requestRef.current) cancelAnimationFrame(requestRef.current);
       };
     } else {

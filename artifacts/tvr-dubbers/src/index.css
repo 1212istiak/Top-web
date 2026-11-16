@@ -489,9 +489,14 @@ html:not(.dark) .liquid-pill.liquid-pill-active.liquid-raised {
 html:not(.dark) .pv-moving { background-color: rgba(226, 232, 240, 0.92); }
 
 /* Custom cursor: hide the native pointer on real desktop mice so only the
-   dot + ring from CursorEffects is visible. Left untouched on touch devices. */
-@media (hover: hover) and (pointer: fine) {
-  *, *::before, *::after {
+   dot + ring from CursorEffects is visible. Only applies while CursorEffects
+   is mounted (it sets html.custom-cursor-active), so pages without it, like
+   the admin panel, keep the normal pointer. The dot + ring are hidden below
+   the md breakpoint (768px), so the native pointer stays there too. */
+@media (hover: hover) and (pointer: fine) and (min-width: 768px) {
+  html.custom-cursor-active *,
+  html.custom-cursor-active *::before,
+  html.custom-cursor-active *::after {
     cursor: none !important;
   }
 }
