@@ -340,6 +340,17 @@ function TrailerTab() {
 // ---------------------------------------------------------------------------
 // SETTINGS TAB
 // ---------------------------------------------------------------------------
+// Format a stored ISO timestamp as the local "YYYY-MM-DDTHH:mm" string that a
+// <datetime-local> input expects. (toISOString() would give UTC, which the
+// input then misreads as local time.)
+function toLocalInput(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 function SettingsTab() {
   const { data: settings } = useGetSettings();
   const updateSettings = useUpdateSettings();
@@ -347,14 +358,25 @@ function SettingsTab() {
   const queryClient = useQueryClient();
 
   const [formData, setFormData] = useState<any>({});
+  // What the countdown field shows, in local time. Kept as plain text while
+  // typing and only converted to a timestamp when Save is pressed.
+  const [countdownLocal, setCountdownLocal] = useState("");
 
   useEffect(() => {
-    if (settings) setFormData(settings);
+    if (settings) {
+      setFormData(settings);
+      setCountdownLocal(toLocalInput(settings.countdownTargetDate));
+    }
   }, [settings]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    updateSettings.mutate({ data: formData }, {
+    const target = countdownLocal ? new Date(countdownLocal) : null;
+    if (target && (isNaN(target.getTime()) || target.getFullYear() < 2000)) {
+      toast({ title: "Error", description: "Please enter a complete, valid countdown date and time", variant: "destructive" });
+      return;
+    }
+    updateSettings.mutate({ data: { ...formData, countdownTargetDate: target ? target.toISOString() : "" } }, {
       onSuccess: () => {
         toast({ title: "Settings updated successfully ✓" });
         queryClient.invalidateQueries({ queryKey: getGetSettingsQueryKey() });
@@ -392,8 +414,8 @@ function SettingsTab() {
           )}
         </div>
         <div className="space-y-2">
-          <label className="text-xs text-muted-foreground">Countdown Target Date (ISO string or YYYY-MM-DD)</label>
-          <Input type="datetime-local" value={formData.countdownTargetDate ? new Date(formData.countdownTargetDate).toISOString().slice(0,16) : ""} onChange={e => setFormData({...formData, countdownTargetDate: e.target.value ? new Date(e.target.value).toISOString() : ""})} />
+          <label className="text-xs text-muted-foreground">Countdown Target Date and Time (your local time)</label>
+          <Input type="datetime-local" min="2000-01-01T00:00" value={countdownLocal} onChange={e => setCountdownLocal(e.target.value)} />
         </div>
         <Button type="submit" disabled={updateSettings.isPending}>Save Settings</Button>
       </form>
