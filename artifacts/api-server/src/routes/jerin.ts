@@ -188,11 +188,15 @@ function isFresh(a: JerinAttachment): boolean {
 const ownerOf = (a: JerinAttachment): string | undefined => a.keyId ?? geminiKeys()[0]?.id;
 const usableBy = (a: JerinAttachment, keyId?: string): boolean => isFresh(a) && (!keyId || ownerOf(a) === keyId);
 
-function attachmentParts(atts: JerinAttachment[] | null | undefined, keyId?: string): Part[] {
+function attachmentParts(atts: JerinAttachment[] | null | undefined, keyId?: string, includeFiles = true): Part[] {
   const parts: Part[] = [];
   for (const a of atts ?? []) {
-    if (usableBy(a, keyId)) parts.push({ fileData: { mimeType: a.mimeType, fileUri: a.fileUri } });
-    else if (a.kind === "audio" && !a.fileUri) continue; // voice note: its transcript is the message text
+    if (usableBy(a, keyId)) {
+      // Re-sending an old video/image on every turn burns the free token quota, so earlier-turn files
+      // are replaced by a note; only the file(s) in the message being answered are actually sent.
+      if (includeFiles) parts.push({ fileData: { mimeType: a.mimeType, fileUri: a.fileUri } });
+      else parts.push({ text: `[earlier in this chat the user attached a ${a.kind} "${a.name}" — not re-sent to save quota; ask them to attach it again if you need to look at it]` });
+    } else if (a.kind === "audio" && !a.fileUri) continue; // voice note: its transcript is the message text
     else if (a.generated) parts.push({ text: `[an image Jerin generated earlier: ${a.name}]` });
     else if (isFresh(a)) parts.push({ text: `[attached ${a.kind} "${a.name}" is stored on a different API key, so it can't be viewed in this reply]` });
     else parts.push({ text: `[attached ${a.kind} "${a.name}" — no longer available to view]` });
@@ -207,9 +211,9 @@ function pushContent(contents: Content[], role: "user" | "model", parts: Part[])
   else contents.push({ role, parts });
 }
 
-function messageToContent(m: typeof jerinMessagesTable.$inferSelect, keyId?: string): Content {
+function messageToContent(m: typeof jerinMessagesTable.$inferSelect, keyId?: string, includeFiles = true): Content {
   if (m.role === "user") {
-    const parts = [...attachmentParts(m.attachments, keyId), ...(m.text ? [{ text: m.text }] : [])];
+    const parts = [...attachmentParts(m.attachments, keyId, includeFiles), ...(m.text ? [{ text: m.text }] : [])];
     return { role: "user", parts: parts.length ? parts : [{ text: "(empty message)" }] };
   }
   let text = m.text || "";
@@ -787,7 +791,9 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
     const hasVideoInput = youtube.length > 0 || (!body.regenerate && clientAtts.some((a) => a.kind === "video"));
     const buildContents = (keyId: string): Content[] => {
       const c: Content[] = [];
-      for (const m of history) pushContent(c, m.role as "user" | "model", messageToContent(m, keyId).parts);
+      // Only a regenerated turn re-sends its own files; for everything else, files from earlier turns become notes.
+      const lastId = history[history.length - 1]?.id;
+      for (const m of history) pushContent(c, m.role as "user" | "model", messageToContent(m, keyId, !!body.regenerate && m.id === lastId).parts);
       if (!body.regenerate) {
         const parts: Part[] = [];
         for (const a of clientAtts) {
@@ -823,6 +829,10 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
     const lockToKeys = owners.length === 1 ? owners : undefined;
 
     // ---- Stream with tool loop ------------------------------------------------------------
+    logger.info(
+      { systemPromptChars: systemPrompt.length, siteContextChars: siteContext.length, historyMessages: history.length, attachments: clientAtts.length },
+      "Jerin prompt size",
+    );
     const baseBody = { systemInstruction: { parts: [{ text: systemPrompt }] } };
     const variants = buildVariants(baseBody, thinking, toggles, hasVideoInput);
     const variantKey = toggles.search || toggles.code ? "builtins" : "plain";

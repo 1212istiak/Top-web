@@ -11,7 +11,17 @@ import {
 } from "@workspace/db";
 import { logger } from "./logger";
 
-const MAX_COMMENTS = 400;
+// Kept small on purpose: this block is sent with EVERY Jerin message, and the free Gemini tier
+// limits tokens per minute. Older comments / full URLs can still be looked up on demand.
+const MAX_COMMENTS = 30;
+const MAX_URL_CHARS = 80;
+const MAX_SETTING_CHARS = 200;
+
+/** One-line, length-capped version of a URL / embed code (embed snippets can be thousands of chars). */
+const short = (v: string | null | undefined, max = MAX_URL_CHARS): string => {
+  const t = (v ?? "").replace(/\s+/g, " ").trim();
+  return t.length > max ? `${t.slice(0, max)}…(+${t.length - max} chars)` : t;
+};
 
 /** Everything in the website database that Jerin should know, as plain text (admin password excluded). */
 export async function buildSiteContext(): Promise<string> {
@@ -43,17 +53,17 @@ export async function buildSiteContext(): Promise<string> {
 
     const epLines = episodes.map(
       (e) =>
-        `id${e.id} | S${e.season} EP${e.episodeNumber}${e.isSpecial ? " [special]" : ""} | ${e.title} | genre: ${e.genre || "-"} | server1: ${e.primaryServerUrl || "EMPTY"} | server2: ${e.backupServerUrl || "EMPTY"} | thumb: ${e.thumbnailUrl || "-"} | ${e.viewCount} views | reactions: ${(reactionsByEpisode.get(e.id) ?? []).join(",") || "none"} | created ${e.createdAt.toISOString().slice(0, 10)}`,
+        `id${e.id} | S${e.season} EP${e.episodeNumber}${e.isSpecial ? " [special]" : ""} | ${e.title} | genre: ${e.genre || "-"} | server1: ${short(e.primaryServerUrl) || "EMPTY"} | server2: ${short(e.backupServerUrl) || "EMPTY"} | thumb: ${short(e.thumbnailUrl) || "-"} | ${e.viewCount} views | reactions: ${(reactionsByEpisode.get(e.id) ?? []).join(",") || "none"} | created ${e.createdAt.toISOString().slice(0, 10)}`,
     );
     const titleById = new Map(episodes.map((e) => [e.id, `S${e.season} EP${e.episodeNumber}`]));
     const commentLines = comments.map(
       (c) =>
-        `[${titleById.get(c.episodeId) ?? `ep#${c.episodeId}`}] ${c.nickname} (${c.createdAt.toISOString().slice(0, 10)}): ${c.body.replace(/\s+/g, " ").slice(0, 300)}`,
+        `[${titleById.get(c.episodeId) ?? `ep#${c.episodeId}`}] ${c.nickname} (${c.createdAt.toISOString().slice(0, 10)}): ${c.body.replace(/\s+/g, " ").slice(0, 200)}`,
     );
-    const settingLines = settings.map((s) => `${s.key}: ${s.value || "(empty)"}`);
+    const settingLines = settings.map((s) => `${s.key}: ${short(s.value, MAX_SETTING_CHARS) || "(empty)"}`);
     const t = trailers[0];
     const trailerLine = t
-      ? `title: ${t.title || "-"} | genre: ${t.genre || "-"} | server1: ${t.primaryServerUrl || "EMPTY"} | server2: ${t.backupServerUrl || "EMPTY"} | thumb: ${t.thumbnailUrl || "-"}`
+      ? `title: ${t.title || "-"} | genre: ${t.genre || "-"} | server1: ${short(t.primaryServerUrl) || "EMPTY"} | server2: ${short(t.backupServerUrl) || "EMPTY"} | thumb: ${short(t.thumbnailUrl) || "-"}`
       : "none";
 
     return [
@@ -67,7 +77,7 @@ export async function buildSiteContext(): Promise<string> {
       ``,
       `SITE SETTINGS:\n${settingLines.join("\n")}`,
       ``,
-      `VISITOR COMMENTS (${comments.length} most recent, newest first):`,
+      `VISITOR COMMENTS (${comments.length} most recent shown, newest first; older ones are not included):`,
       commentLines.join("\n") || "(none)",
     ].join("\n");
   } catch (err) {

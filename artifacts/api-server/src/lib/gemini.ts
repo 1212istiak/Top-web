@@ -79,7 +79,7 @@ function msUntilPacificMidnight(now = new Date()): number {
 }
 
 /** Decides whether a failed response means "this key is out", and for how long. */
-function classifyKeyFailure(status: number, text: string): { ms: number; reason: string; invalid?: boolean } | null {
+function classifyKeyFailure(status: number, text: string): { ms: number; reason: string; invalid?: boolean; unrecognised?: boolean } | null {
   if (status === 429) {
     const q = parseQuota(text);
     if (/limit:\s*0\b/.test(text)) return { ms: 6 * 3600_000, reason: "no free allowance (limit 0)" };
@@ -87,7 +87,7 @@ function classifyKeyFailure(status: number, text: string): { ms: number; reason:
     if (q.kind === "minute" || q.kind === "tokens")
       return { ms: Math.min((q.retrySeconds ?? 60) + 1, 120) * 1000, reason: q.kind === "tokens" ? "per-minute token limit" : "per-minute limit" };
     // Unrecognised 429: could be a request-specific limit rather than an empty key, so rest briefly only.
-    return { ms: 60_000, reason: "Google refused the request (limit not recognised)" };
+    return { ms: 60_000, reason: "Google refused the request (limit not recognised)", unrecognised: true };
   }
   if (status === 400 && /API key not valid|API_KEY_INVALID/i.test(text)) return { ms: 6 * 3600_000, reason: "invalid key", invalid: true };
   if (status === 403 && !/file/i.test(text) && /PERMISSION_DENIED|API key|leaked|suspend|disabled|denied/i.test(text))
@@ -95,7 +95,7 @@ function classifyKeyFailure(status: number, text: string): { ms: number; reason:
   return null;
 }
 
-function markFailed(k: KeyInfo, model: string, f: { ms: number; reason: string; invalid?: boolean }, detail?: string) {
+function markFailed(k: KeyInfo, model: string, f: { ms: number; reason: string; invalid?: boolean; unrecognised?: boolean }, detail?: string) {
   const rest: Rest = { until: Date.now() + f.ms, reason: f.reason, detail };
   if (f.invalid) disabled.set(k.id, rest);
   else resting.set(`${k.id}|${model}`, rest);
@@ -216,6 +216,9 @@ function exhaustedMessage(model: string, allowed?: string[]): string {
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** After this many keys in a row refuse a request with a 429 that names no limit, stop trying more keys. */
+const MAX_UNRECOGNISED_KEYS = 3;
+
 const HEADER_TIMEOUT_MS = 45_000; // Gemini must start answering within this long
 const STALL_TIMEOUT_MS = 60_000; // ...and must not go silent for this long mid-answer
 
@@ -251,6 +254,7 @@ export async function pooledFetch(
   let waited = false;
   let last: { res: Response; key: KeyInfo } | null = null;
   let previous: KeyInfo | null = null;
+  let unrecognisedCount = 0;
 
   for (let attempt = 0; attempt < 20; attempt++) {
     const key = pickKey(model, opts.allowedKeyIds);
@@ -298,9 +302,15 @@ export async function pooledFetch(
     const text = await res.clone().text().catch(() => "");
     const failure = classifyKeyFailure(res.status, text);
     if (!failure) return { res, key };
+    // Google's complete error (it names the exact quota in details[].violations[].quotaId). No key material in it.
+    console.warn(`[gemini-keys] ${key.label} got HTTP ${res.status} on ${model}: ${text.replace(/\s+/g, " ").slice(0, 1500)}`);
     markFailed(key, model, failure, geminiReason(text));
     last = { res, key };
     previous = key;
+    if (failure.unrecognised && ++unrecognisedCount >= MAX_UNRECOGNISED_KEYS) {
+      const msg = `Google refused this request on ${unrecognisedCount} API keys in a row (Google said: "${geminiReason(text)}") without saying which limit. Stopped trying more keys. This is most likely a free-tier limit for ${model}, or the request being too large. Try another model in Jerin's settings. These keys are retried automatically in about 1 min.`;
+      return { res, key: null, exhausted: msg };
+    }
   }
   return { res: last!.res, key: last!.key };
 }
@@ -376,7 +386,7 @@ export async function* streamGenerate(
   signal?: AbortSignal,
   opts: Omit<PoolOptions, "signal"> = {},
 ): AsyncGenerator<any> {
-  const { res, exhausted } = await pooledFetch(model, `models/${model}:streamGenerateContent?alt=sse`, body, { ...opts, signal });
+  const { res, key: usedKey, exhausted } = await pooledFetch(model, `models/${model}:streamGenerateContent?alt=sse`, body, { ...opts, signal });
   if (!res.ok || !res.body) {
     const text = await res.text().catch(() => "");
     throw new GeminiError(res.status, text, exhausted);
@@ -385,6 +395,10 @@ export async function* streamGenerate(
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let usage: any = null;
+  const logUsage = () => {
+    if (usage) console.log(`[gemini-usage] ${usedKey?.label ?? "?"} ${model}: prompt=${usage.promptTokenCount ?? "?"} output=${usage.candidatesTokenCount ?? "?"} thoughts=${usage.thoughtsTokenCount ?? 0} tools=${usage.toolUsePromptTokenCount ?? 0} total=${usage.totalTokenCount ?? "?"}`);
+  };
   for (;;) {
     let stall: ReturnType<typeof setTimeout> | undefined;
     const next = await Promise.race([
@@ -398,7 +412,10 @@ export async function* streamGenerate(
       throw new GeminiError(504, "", slowMessage(STALL_TIMEOUT_MS / 1000));
     }
     const { done, value } = next;
-    if (done) break;
+    if (done) {
+      logUsage();
+      break;
+    }
     buffer += decoder.decode(value, { stream: true });
     let idx: number;
     while ((idx = buffer.indexOf("\n")) >= 0) {
@@ -407,11 +424,14 @@ export async function* streamGenerate(
       if (!line.startsWith("data:")) continue;
       const json = line.slice(5).trim();
       if (!json || json === "[DONE]") continue;
+      let chunk: any;
       try {
-        yield JSON.parse(json);
+        chunk = JSON.parse(json);
       } catch {
-        /* partial / keep-alive line */
+        continue; /* partial / keep-alive line */
       }
+      if (chunk?.usageMetadata) usage = chunk.usageMetadata;
+      yield chunk;
     }
   }
 }
@@ -423,10 +443,13 @@ export async function generateOnce(
   signal?: AbortSignal,
   opts: Omit<PoolOptions, "signal"> = {},
 ): Promise<any> {
-  const { res, exhausted } = await pooledFetch(model, `models/${model}:generateContent`, body, { ...opts, signal });
+  const { res, key: usedKey, exhausted } = await pooledFetch(model, `models/${model}:generateContent`, body, { ...opts, signal });
   const text = await res.text();
   if (!res.ok) throw new GeminiError(res.status, text, exhausted);
-  return JSON.parse(text);
+  const parsed = JSON.parse(text);
+  const u = parsed?.usageMetadata;
+  if (u) console.log(`[gemini-usage] ${usedKey?.label ?? "?"} ${model}: prompt=${u.promptTokenCount ?? "?"} output=${u.candidatesTokenCount ?? "?"} total=${u.totalTokenCount ?? "?"}`);
+  return parsed;
 }
 
 export interface UploadedFile {
