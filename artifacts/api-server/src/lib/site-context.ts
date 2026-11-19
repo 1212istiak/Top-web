@@ -23,6 +23,37 @@ const short = (v: string | null | undefined, max = MAX_URL_CHARS): string => {
   return t.length > max ? `${t.slice(0, max)}…(+${t.length - max} chars)` : t;
 };
 
+/** Which video platform a server link / embed code points to (cheap to send, and lets Jerin count exactly). */
+function platformOf(v: string | null | undefined): string {
+  const t = (v ?? "").trim();
+  if (!t) return "EMPTY";
+  const l = t.toLowerCase();
+  if (/youtube\.com|youtu\.be|youtube-nocookie\.com/.test(l)) return "youtube";
+  if (/dailymotion\.com|dai\.ly/.test(l)) return "dailymotion";
+  if (/rumble\.com/.test(l)) return "rumble";
+  if (/drive\.google\.com/.test(l)) return "google-drive";
+  if (/cloudinary\.com/.test(l)) return "cloudinary";
+  const host = t.match(/https?:\/\/([^/\s"'<>?#]+)/i)?.[1]?.replace(/^www\./i, "");
+  return host ? host.toLowerCase() : "other";
+}
+
+/** "[youtube, embed-code] <first 80 chars>" or "EMPTY". */
+const link = (v: string | null | undefined): string => {
+  const p = platformOf(v);
+  if (p === "EMPTY") return "EMPTY";
+  const embed = /<\s*(iframe|script)/i.test(v ?? "") ? ", embed-code" : "";
+  return `[${p}${embed}] ${short(v)}`;
+};
+
+const tally = (vals: (string | null | undefined)[]): string => {
+  const m = new Map<string, number>();
+  for (const v of vals) {
+    const p = platformOf(v);
+    m.set(p, (m.get(p) ?? 0) + 1);
+  }
+  return [...m].sort((a, b) => b[1] - a[1]).map(([p, n]) => `${p}: ${n}`).join(", ") || "none";
+};
+
 /** Everything in the website database that Jerin should know, as plain text (admin password excluded). */
 export async function buildSiteContext(): Promise<string> {
   try {
@@ -53,7 +84,7 @@ export async function buildSiteContext(): Promise<string> {
 
     const epLines = episodes.map(
       (e) =>
-        `id${e.id} | S${e.season} EP${e.episodeNumber}${e.isSpecial ? " [special]" : ""} | ${e.title} | genre: ${e.genre || "-"} | server1: ${short(e.primaryServerUrl) || "EMPTY"} | server2: ${short(e.backupServerUrl) || "EMPTY"} | thumb: ${short(e.thumbnailUrl) || "-"} | ${e.viewCount} views | reactions: ${(reactionsByEpisode.get(e.id) ?? []).join(",") || "none"} | created ${e.createdAt.toISOString().slice(0, 10)}`,
+        `id${e.id} | S${e.season} EP${e.episodeNumber}${e.isSpecial ? " [special]" : ""} | ${e.title} | genre: ${e.genre || "-"} | server1: ${link(e.primaryServerUrl)} | server2: ${link(e.backupServerUrl)} | thumb: ${short(e.thumbnailUrl) || "-"} | ${e.viewCount} views | reactions: ${(reactionsByEpisode.get(e.id) ?? []).join(",") || "none"} | created ${e.createdAt.toISOString().slice(0, 10)}`,
     );
     const titleById = new Map(episodes.map((e) => [e.id, `S${e.season} EP${e.episodeNumber}`]));
     const commentLines = comments.map(
@@ -63,11 +94,16 @@ export async function buildSiteContext(): Promise<string> {
     const settingLines = settings.map((s) => `${s.key}: ${short(s.value, MAX_SETTING_CHARS) || "(empty)"}`);
     const t = trailers[0];
     const trailerLine = t
-      ? `title: ${t.title || "-"} | genre: ${t.genre || "-"} | server1: ${short(t.primaryServerUrl) || "EMPTY"} | server2: ${short(t.backupServerUrl) || "EMPTY"} | thumb: ${short(t.thumbnailUrl) || "-"}`
+      ? `title: ${t.title || "-"} | genre: ${t.genre || "-"} | server1: ${link(t.primaryServerUrl)} | server2: ${link(t.backupServerUrl)} | thumb: ${short(t.thumbnailUrl) || "-"}`
       : "none";
 
     return [
       `=== WEBSITE DATABASE (live, read-only snapshot) ===`,
+      `EXACT PLATFORM COUNTS over all ${episodes.length} episodes (use these for "how many" questions; URLs below are shortened):`,
+      `  server1 (primary): ${tally(episodes.map((e) => e.primaryServerUrl))}`,
+      `  server2 (backup): ${tally(episodes.map((e) => e.backupServerUrl))}`,
+      `  both servers combined: ${tally(episodes.flatMap((e) => [e.primaryServerUrl, e.backupServerUrl]))}`,
+      ``,
       `EPISODES (${episodes.length}):`,
       epLines.join("\n") || "(none)",
       ``,
