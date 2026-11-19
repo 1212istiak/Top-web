@@ -421,7 +421,16 @@ export async function* streamGenerate(
   const logUsage = () => {
     if (usage) console.log(`[gemini-usage] ${usedKey?.label ?? "?"} ${model}: prompt=${usage.promptTokenCount ?? "?"} output=${usage.candidatesTokenCount ?? "?"} thoughts=${usage.thoughtsTokenCount ?? 0} tools=${usage.toolUsePromptTokenCount ?? 0} total=${usage.totalTokenCount ?? "?"}`);
   };
+  // pooledFetch only listens for Stop until Google's response headers arrive, so the body stream must
+  // be wired to the signal here, or Stop / the safety cap would not actually end a running reply.
+  const abortError = () => Object.assign(new Error("Aborted"), { name: "AbortError" });
+  const onAbort = () => {
+    reader.cancel().catch(() => {});
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
+  try {
   for (;;) {
+    if (signal?.aborted) throw abortError();
     let stall: ReturnType<typeof setTimeout> | undefined;
     const next = await Promise.race([
       reader.read(),
@@ -434,6 +443,7 @@ export async function* streamGenerate(
       throw new GeminiError(504, "", slowMessage(STALL_TIMEOUT_MS / 1000));
     }
     const { done, value } = next;
+    if (signal?.aborted) throw abortError();
     if (done) {
       logUsage();
       break;
@@ -455,6 +465,9 @@ export async function* streamGenerate(
       if (chunk?.usageMetadata) usage = chunk.usageMetadata;
       yield chunk;
     }
+  }
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
   }
 }
 

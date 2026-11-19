@@ -44,6 +44,7 @@ import {
   type SessionRow,
   type StreamEvent,
   type UiAttachment,
+  stopChat,
 } from "./api";
 import { JerinStyles, MessageView, Orb, type ChatMsg } from "./parts";
 import { VoiceStreamer, speakMessage, stopVoice, unlockAudio, useSpeakingOwner } from "./voice";
@@ -202,6 +203,9 @@ export function JerinChat({ model, thinking }: { model: string; thinking: boolea
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
+  const lastActivityRef = useRef(0); // last time any bytes arrived on the reply stream
+  const droppedRef = useRef(false); // the stream looked dead after the tab came back
+  const recoverTokenRef = useRef(0); // bumping this cancels a running "wait for the reply" poll
   const [dragging, setDragging] = useState(false);
 
   const [tools, setTools] = useState<{ search: boolean; code: boolean }>(() => {
@@ -299,7 +303,73 @@ export function JerinChat({ model, thinking }: { model: string; thinking: boolea
     return () => clearTimeout(t);
   }, [query, refreshSessions]);
 
+  // The connection to a reply dropped (tab minimized, phone locked, network blip). The server keeps
+  // writing the reply and saves it, so wait for it and then load the finished chat.
+  const recoverSession = useCallback(
+    (id: string, modelKey?: string) => {
+      const token = ++recoverTokenRef.current;
+      busyRef.current = true;
+      setBusy(true);
+      const label = "Reconnecting — Jerin keeps working in the background…";
+      setMessages((prev) => {
+        if (modelKey && prev.some((m) => m.key === modelKey)) {
+          return prev.map((m) => (m.key === modelKey ? { ...m, streaming: true, toolLabel: label } : m));
+        }
+        return [...prev, { key: uid(), role: "model", text: "", streaming: true, toolLabel: label }];
+      });
+      const startedAt = Date.now();
+      const finish = (msgs?: ServerMessage[]) => {
+        if (recoverTokenRef.current !== token) return;
+        if (msgs && sessionIdRef.current === id) {
+          const mapped = msgs.map(mapServerMessage);
+          // No reply was saved (e.g. the server restarted mid-reply): say so instead of going silent.
+          if (mapped.length && mapped[mapped.length - 1].role === "user") {
+            mapped.push({
+              key: uid(),
+              role: "model",
+              text: "",
+              error: "The connection dropped before Jerin could finish this reply (the server may have restarted). Press regenerate to try again.",
+            });
+          }
+          setMessages(mapped);
+          requestAnimationFrame(() => scrollToBottom());
+        } else {
+          setMessages((prev) => prev.map((m) => (m.streaming ? { ...m, streaming: false, toolLabel: undefined } : m)));
+        }
+        busyRef.current = false;
+        setBusy(false);
+        refreshSessions("");
+      };
+      const tick = async () => {
+        if (recoverTokenRef.current !== token) return;
+        const tooLong = Date.now() - startedAt > 13 * 60_000;
+        try {
+          const d = await apiJson<{ messages: ServerMessage[]; running?: boolean }>(`/sessions/${id}`);
+          if (recoverTokenRef.current !== token) return;
+          if (!d.running || tooLong) return finish(d.messages);
+        } catch {
+          if (tooLong) return finish();
+        }
+        setTimeout(tick, 2500);
+      };
+      void tick();
+    },
+    [refreshSessions, scrollToBottom],
+  );
+
+  // A running reply is stopped on purpose only (Stop, new chat, opening another chat); a dropped
+  // connection alone does not stop it.
+  const stopRunningReply = () => {
+    if (busyRef.current && sessionIdRef.current) void stopChat(sessionIdRef.current);
+  };
+
   const resetChat = useCallback(() => {
+    stopRunningReply();
+    recoverTokenRef.current++;
+    if (!abortRef.current) {
+      busyRef.current = false;
+      setBusy(false);
+    }
     abortRef.current?.abort();
     stopVoice();
     sessionIdRef.current = null;
@@ -313,14 +383,21 @@ export function JerinChat({ model, thinking }: { model: string; thinking: boolea
 
   const openSession = useCallback(
     async (id: string) => {
+      if (sessionIdRef.current !== id) stopRunningReply();
+      recoverTokenRef.current++;
+      if (!abortRef.current) {
+        busyRef.current = false;
+        setBusy(false);
+      }
       abortRef.current?.abort();
       stopVoice();
       setSidebarOpen(false);
       try {
-        const d = await apiJson<{ session: SessionRow; messages: ServerMessage[] }>(`/sessions/${id}`);
+        const d = await apiJson<{ session: SessionRow; messages: ServerMessage[]; running?: boolean }>(`/sessions/${id}`);
         sessionIdRef.current = id;
         setSessionId(id);
         setMessages(d.messages.map(mapServerMessage));
+        if (d.running) recoverSession(id); // she is still writing a reply in this chat
         localStorage.setItem(LS_LAST_SESSION, id);
         stickRef.current = true;
         requestAnimationFrame(() => scrollToBottom());
@@ -329,7 +406,7 @@ export function JerinChat({ model, thinking }: { model: string; thinking: boolea
         if (localStorage.getItem(LS_LAST_SESSION) === id) localStorage.removeItem(LS_LAST_SESSION);
       }
     },
-    [scrollToBottom, toast],
+    [scrollToBottom, toast, recoverSession],
   );
 
   // Come back to the chat you were in.
@@ -455,6 +532,11 @@ export function JerinChat({ model, thinking }: { model: string; thinking: boolea
       const ac = new AbortController();
       abortRef.current = ac;
       const voice = voiceOn ? new VoiceStreamer(modelKey) : null;
+      let finished = false; // got the "done" or "error" event, i.e. the reply really ended
+      let gotBytes = false; // the stream was established at some point
+      let recovering = false; // the connection dropped; wait for the saved reply instead
+      lastActivityRef.current = Date.now();
+      droppedRef.current = false;
 
       let textBuf = "";
       let thoughtBuf = "";
@@ -511,6 +593,7 @@ export function JerinChat({ model, thinking }: { model: string; thinking: boolea
             patchMsg(modelKey, (m) => ({ ...m, notice: ev.text }));
             break;
           case "done":
+            finished = true;
             flush();
             patchMsg(modelKey, (m) => ({
               ...m,
@@ -521,6 +604,7 @@ export function JerinChat({ model, thinking }: { model: string; thinking: boolea
             }));
             break;
           case "error":
+            finished = true;
             flush();
             patchMsg(modelKey, (m) => ({ ...m, error: ev.message, streaming: false, toolLabel: undefined }));
             break;
@@ -546,9 +630,20 @@ export function JerinChat({ model, thinking }: { model: string; thinking: boolea
           },
           ac.signal,
           onEvent,
+          () => {
+            gotBytes = true;
+            lastActivityRef.current = Date.now();
+          },
         );
+        // The stream closed without the reply finishing (and not because of Stop): treat it as a drop.
+        if (!finished && !ac.signal.aborted && gotBytes) recovering = true;
       } catch (err: any) {
-        if (err?.name !== "AbortError") {
+        if (err?.name === "AbortError") {
+          // Aborted because the stream looked dead after the tab came back (not by the Stop button).
+          if (droppedRef.current && gotBytes) recovering = true;
+        } else if (gotBytes && !finished) {
+          recovering = true; // network error mid-reply
+        } else {
           flush();
           patchMsg(modelKey, (m) => ({ ...m, error: err?.message || "Something went wrong talking to Jerin.", streaming: false }));
         }
@@ -556,20 +651,26 @@ export function JerinChat({ model, thinking }: { model: string; thinking: boolea
         if (raf) cancelAnimationFrame(raf);
         flush();
         voice?.end();
-        // Drop an empty placeholder (e.g. stopped before anything arrived).
-        setMessages((prev) =>
-          prev
-            .map((m) => (m.key === modelKey ? { ...m, streaming: false, toolLabel: undefined } : m))
-            .filter((m) => !(m.key === modelKey && !m.text && !m.attachments?.length && !m.action && !m.error)),
-        );
-        abortRef.current = null;
-        busyRef.current = false;
-        setBusy(false);
-        refreshSessions("");
-        setTimeout(() => refreshSessions(""), 6000); // picks up the auto-generated title
+        droppedRef.current = false;
+        if (recovering && sessionIdRef.current) {
+          abortRef.current = null;
+          recoverSession(sessionIdRef.current, modelKey);
+        } else {
+          // Drop an empty placeholder (e.g. stopped before anything arrived).
+          setMessages((prev) =>
+            prev
+              .map((m) => (m.key === modelKey ? { ...m, streaming: false, toolLabel: undefined } : m))
+              .filter((m) => !(m.key === modelKey && !m.text && !m.attachments?.length && !m.action && !m.error)),
+          );
+          abortRef.current = null;
+          busyRef.current = false;
+          setBusy(false);
+          refreshSessions("");
+          setTimeout(() => refreshSessions(""), 6000); // picks up the auto-generated title
+        }
       }
     },
-    [model, thinking, tools, voiceOn, refreshSessions],
+    [model, thinking, tools, voiceOn, refreshSessions, recoverSession],
   );
 
   const submit = () => {
@@ -581,9 +682,34 @@ export function JerinChat({ model, thinking }: { model: string; thinking: boolea
   };
 
   const stop = () => {
+    stopRunningReply(); // the server only stops when told to; a closed connection alone doesn't
     abortRef.current?.abort();
     stopVoice();
   };
+
+  // Tab / app comes back to the foreground: if the reply stream went silent while hidden, it is dead
+  // (browsers freeze background tabs). Drop it and fetch the saved reply from the server instead.
+  useEffect(() => {
+    let timer: number | undefined;
+    const check = () => {
+      if (document.visibilityState !== "visible") return;
+      window.clearTimeout(timer);
+      // Give any buffered data a moment to arrive first, so a healthy stream isn't dropped.
+      timer = window.setTimeout(() => {
+        if (busyRef.current && abortRef.current && Date.now() - lastActivityRef.current > 15_000) {
+          droppedRef.current = true;
+          abortRef.current.abort();
+        }
+      }, 2500);
+    };
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("online", check);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("online", check);
+    };
+  }, []);
 
   const regenerate = () => {
     if (busyRef.current) return;

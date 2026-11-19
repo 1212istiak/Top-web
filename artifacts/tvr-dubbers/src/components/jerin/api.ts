@@ -259,6 +259,8 @@ export async function streamChat(
   body: ChatRequest,
   signal: AbortSignal,
   onEvent: (e: StreamEvent) => void,
+  /** Called whenever any bytes arrive (including the server's keep-alive pings). */
+  onActivity?: () => void,
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/api/rocky/chat`, {
     method: "POST",
@@ -281,6 +283,7 @@ export async function streamChat(
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
+    onActivity?.();
     buffer += decoder.decode(value, { stream: true });
     let idx: number;
     while ((idx = buffer.indexOf("\n\n")) >= 0) {
@@ -296,4 +299,9 @@ export async function streamChat(
       }
     }
   }
+}
+
+/** Tells the server to stop the reply being written for this chat (a dropped connection no longer does). */
+export function stopChat(sessionId: string): Promise<unknown> {
+  return apiJson("/chat/stop", { method: "POST", body: JSON.stringify({ sessionId }) }).catch(() => undefined);
 }

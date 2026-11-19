@@ -276,6 +276,13 @@ router.get("/rocky/sessions", requireAdmin, async (req, res): Promise<void> => {
   }
 });
 
+router.post("/rocky/chat/stop", requireAdmin, (req, res): void => {
+  const id = typeof req.body?.sessionId === "string" ? req.body.sessionId : "";
+  const ac = id ? runs.get(id) : undefined;
+  if (ac) ac.abort();
+  res.json({ stopped: !!ac });
+});
+
 router.get("/rocky/sessions/:id", requireAdmin, async (req, res): Promise<void> => {
   try {
     const id = String(req.params.id);
@@ -289,7 +296,7 @@ router.get("/rocky/sessions/:id", requireAdmin, async (req, res): Promise<void> 
       .from(jerinMessagesTable)
       .where(eq(jerinMessagesTable.sessionId, id))
       .orderBy(asc(jerinMessagesTable.id));
-    res.json({ session, messages });
+    res.json({ session, messages, running: runs.has(id) });
   } catch (err) {
     logger.error({ err }, "Load Jerin session failed");
     res.status(500).json({ error: "Couldn't load that chat." });
@@ -596,6 +603,12 @@ const startVariant: Record<"builtins" | "plain", number> = { builtins: 0, plain:
 // Google Search grounding has its own (often zero) free-tier quota. When a request with Search on is
 // refused with a 429 and works without it, Search is left off for a while instead of failing first.
 const SEARCH_PAUSE_MS = 30 * 60_000;
+
+// Replies that are being generated right now, by chat id. A reply keeps running (and is saved to the
+// database) even if the browser disconnects, e.g. the tab is minimized or the phone locks. Only the
+// Stop button (POST /rocky/chat/stop) or the hard cap cancels it.
+const runs = new Map<string, AbortController>();
+const RUN_HARD_CAP_MS = 12 * 60_000;
 let searchBlockedUntil = 0;
 
 /** "gemini-3.8-flash" -> "3.8 Flash" */
@@ -667,6 +680,10 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
 
   // ---- Session + user message -------------------------------------------------------------
   let sessionId = typeof body.sessionId === "string" && body.sessionId ? body.sessionId : "";
+  if (sessionId && runs.has(sessionId)) {
+    res.status(409).json({ error: "Jerin is still answering in this chat — wait for her to finish, or press Stop." });
+    return;
+  }
   let isNewSession = false;
   let userMessageId: number | null = null;
   let history: (typeof jerinMessagesTable.$inferSelect)[] = [];
@@ -734,9 +751,17 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
   res.flushHeaders?.();
 
   const ac = new AbortController();
+  runs.set(sessionId, ac);
+  const hardCap = setTimeout(() => ac.abort(), RUN_HARD_CAP_MS);
+  // A dropped connection (minimized tab, locked phone, network blip) no longer cancels the reply:
+  // Jerin keeps going and saves it, and the page picks it up when it comes back.
   res.on("close", () => {
-    if (!res.writableEnded) ac.abort();
+    if (!res.writableEnded) logger.info({ sessionId }, "Client disconnected mid-reply; Jerin keeps working and will save it");
   });
+  // Tiny comment lines keep proxies from closing an idle stream and let the page notice a dead one.
+  const keepAlive = setInterval(() => {
+    if (!res.writableEnded && !res.destroyed) res.write(": ping\n\n");
+  }, 10_000);
   const emit = (d: Record<string, unknown>) => sse(res, d);
 
   let fullText = "";
@@ -1050,7 +1075,7 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
     }
   } catch (err: any) {
     if (err?.name === "AbortError" || ac.signal.aborted) {
-      // User pressed Stop (or left): keep what was already written.
+      // User pressed Stop (or the 12-minute safety cap hit): keep what was already written.
       try {
         await saveModelMessage();
       } catch (e) {
@@ -1069,6 +1094,10 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
       err instanceof GeminiError ? (err.friendly ?? friendlyGeminiError(err.status, err.body, model)) : "Something went wrong talking to Jerin's brain.";
     emit({ type: "error", message });
     if (!res.writableEnded) res.end();
+  } finally {
+    clearInterval(keepAlive);
+    clearTimeout(hardCap);
+    if (runs.get(sessionId) === ac) runs.delete(sessionId);
   }
 });
 
