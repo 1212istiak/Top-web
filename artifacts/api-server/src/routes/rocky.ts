@@ -1,13 +1,13 @@
 import { Router, type IRouter } from "express";
 import { requireAdmin } from "../middlewares/auth";
 import { logger } from "../lib/logger";
-import { pooledFetch, hasGeminiKeys } from "../lib/gemini";
+import { pooledFetch, hasGeminiKeys, thinkingOffConfig } from "../lib/gemini";
 import { db, episodesTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 
 const router: IRouter = Router();
 
-const ALLOWED_MODELS = ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash"] as const;
+const ALLOWED_MODELS = ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-4-hydrogen"] as const;
 type GeminiModel = typeof ALLOWED_MODELS[number];
 
 import { isRateLimited } from "../lib/rate-limit";
@@ -196,7 +196,7 @@ router.post("/rocky/generate", requireAdmin, async (req, res): Promise<void> => 
     contents: [{ role: "user", parts }],
   };
   if (thinking === false) {
-    requestBody.generationConfig = { thinkingConfig: { thinkingBudget: 0 } };
+    requestBody.generationConfig = { thinkingConfig: thinkingOffConfig(selectedModel) };
   }
   if ((mode || "chat") === "chat") {
     requestBody.tools = TOOLS;

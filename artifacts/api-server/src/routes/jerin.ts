@@ -26,11 +26,17 @@ import {
   streamGenerate,
   uploadToGeminiFiles,
   clearUnrecognisedRests,
+  isGemini4,
+  thinkingOffConfig,
+  thinkingOnConfig,
 } from "../lib/gemini";
 
 const router: IRouter = Router();
 
-const ALLOWED_MODELS = ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash"];
+const ALLOWED_MODELS = ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-4-hydrogen"];
+// When the chosen model is overloaded / out of quota, fall back in this order. The Gemini 4 model is
+// only used when it is picked on purpose; it never becomes somebody's silent fallback.
+const FALLBACK_ORDER = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash"];
 const DEFAULT_MODEL = "gemini-3.8-flash";
 const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
 const FILE_TTL_MS = 47 * 60 * 60 * 1000; // Gemini Files API keeps uploads for 48h
@@ -612,9 +618,10 @@ const RUN_HARD_CAP_MS = 12 * 60_000;
 let searchBlockedUntil = 0;
 
 /** "gemini-3.8-flash" -> "3.8 Flash" */
-const shortModel = (m: string) => m.replace(/^gemini-/, "").replace(/-flash$/, " Flash");
+const shortModel = (m: string) =>
+  m.replace(/^gemini-/, "").replace(/-flash$/, " Flash").replace(/^4-hydrogen$/, "4 Hydrogen");
 
-function buildVariants(base: any, thinking: boolean, toggles: ToolToggles, hasVideo: boolean) {
+function buildVariants(base: any, thinking: boolean, toggles: ToolToggles, hasVideo: boolean, model: string) {
   const builtins: any[] = [];
   if (toggles.search) builtins.push({ googleSearch: {} }, { urlContext: {} });
   if (toggles.code) builtins.push({ codeExecution: {} });
@@ -623,9 +630,10 @@ function buildVariants(base: any, thinking: boolean, toggles: ToolToggles, hasVi
   // what makes full-length episodes fit under the free per-minute token limit. Dialogue is audio,
   // so script work does not need high-res frames.
   const media = hasVideo ? { mediaResolution: "MEDIA_RESOLUTION_LOW" } : {};
-  const thinkingCfg = thinking
-    ? { ...media, thinkingConfig: { includeThoughts: true, thinkingBudget: -1 } }
-    : { ...media, thinkingConfig: { thinkingBudget: 0 } };
+  const thinkingCfg = {
+    ...media,
+    thinkingConfig: thinking ? thinkingOnConfig(model) : thinkingOffConfig(model),
+  };
 
   const withTools = (tools: any[], extra: any = {}, gen: any = thinkingCfg) => ({
     ...base,
@@ -871,11 +879,11 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
     const searchPaused = toggles.search && Date.now() < searchBlockedUntil;
     let activeToggles: ToolToggles = searchPaused ? { ...toggles, search: false } : toggles;
     let searchDropped = searchPaused; // true once Search is off for this request (so it is only dropped once)
-    let variants = buildVariants(baseBody, thinking, activeToggles, hasVideoInput);
+    let variants = buildVariants(baseBody, thinking, activeToggles, hasVideoInput, model);
     let variantKey: "builtins" | "plain" = activeToggles.search || activeToggles.code ? "builtins" : "plain";
     let variantIdx = Math.min(startVariant[variantKey], variants.length - 1);
     const notices: string[] = [];
-    const skippedModels: { model: string; why: "overloaded" | "quota" }[] = [];
+    const skippedModels: { model: string; why: "overloaded" | "quota" | "unavailable" }[] = [];
     if (searchPaused) notices.push("Web search was skipped (Google's free tier refused it a moment ago).");
     const sourceSet = new Map<string, string>();
 
@@ -960,20 +968,33 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
             searchDropped = true;
             activeToggles = { ...activeToggles, search: false };
             clearUnrecognisedRests(model);
-            variants = buildVariants(baseBody, thinking, activeToggles, hasVideoInput);
+            variants = buildVariants(baseBody, thinking, activeToggles, hasVideoInput, model);
             variantKey = activeToggles.search || activeToggles.code ? "builtins" : "plain";
             variantIdx = Math.min(startVariant[variantKey], variants.length - 1);
             notices.push("Web search was skipped (Google's free tier refused it).");
             continue;
           }
           const poolOut = err instanceof GeminiError && err.status === 429 && !!err.friendly && !lockToKeys;
-          if (err instanceof GeminiError && ([500, 502, 503, 504].includes(err.status) || poolOut) && !succeeded && !ac.signal.aborted) {
-            const alt = [...ALLOWED_MODELS].reverse().find((m) => !triedModels.has(m));
+          // A Gemini 4 model these keys can't use (not found / not offered / thinking setting refused).
+          const unavailable =
+            err instanceof GeminiError &&
+            isGemini4(model) &&
+            (err.status === 404 || (err.status === 400 && /thinking|not found|not supported/i.test(err.body)));
+          if (
+            err instanceof GeminiError &&
+            ([500, 502, 503, 504].includes(err.status) || poolOut || unavailable) &&
+            !succeeded &&
+            !ac.signal.aborted
+          ) {
+            const alt = FALLBACK_ORDER.find((m) => !triedModels.has(m));
             if (alt) {
-              logger.warn({ from: model, to: alt, status: err.status }, "Gemini unavailable, switching model");
-              skippedModels.push({ model, why: poolOut ? "quota" : "overloaded" });
+              logger.warn({ from: model, to: alt, status: err.status, body: unavailable ? err.body.slice(0, 300) : undefined }, "Gemini unavailable, switching model");
+              skippedModels.push({ model, why: unavailable ? "unavailable" : poolOut ? "quota" : "overloaded" });
               triedModels.add(alt);
               model = alt;
+              // The thinking settings differ between model families, so rebuild the request for the new model.
+              variants = buildVariants(baseBody, thinking, activeToggles, hasVideoInput, model);
+              variantIdx = Math.min(variantIdx, variants.length - 1);
               continue;
             }
           }
@@ -1030,10 +1051,11 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
     sources = [...sourceSet].map(([uri, title]) => ({ title, uri })).slice(0, 8);
     if (sources.length) emit({ type: "sources", sources });
     if (skippedModels.length) {
-      const names = (why: "overloaded" | "quota") => skippedModels.filter((x) => x.why === why).map((x) => shortModel(x.model));
+      const names = (why: "overloaded" | "quota" | "unavailable") => skippedModels.filter((x) => x.why === why).map((x) => shortModel(x.model));
       const parts = [
         names("overloaded").length ? `${names("overloaded").join(" and ")} overloaded` : "",
         names("quota").length ? `${names("quota").join(" and ")} out of quota` : "",
+        names("unavailable").length ? `${names("unavailable").join(" and ")} not available on your API keys` : "",
       ].filter(Boolean);
       notices.unshift(`Answered by ${shortModel(model)} (${parts.join("; ")} right now).`);
     }
@@ -1064,7 +1086,7 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
             ],
           },
         ],
-        generationConfig: { thinkingConfig: { thinkingBudget: 0 }, maxOutputTokens: 30 },
+        generationConfig: { thinkingConfig: thinkingOffConfig(model), maxOutputTokens: 30 },
       })
         .then((d) => {
           const t = cleanTitle(String(d?.candidates?.[0]?.content?.parts?.[0]?.text ?? ""));

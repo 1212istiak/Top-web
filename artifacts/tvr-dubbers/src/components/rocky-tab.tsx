@@ -9,12 +9,13 @@ import { JerinChat } from "@/components/jerin/chat";
 // ---------------------------------------------------------------------------
 // Types & Constants
 // ---------------------------------------------------------------------------
-type GeminiModel = "gemini-3.6-flash" | "gemini-3.7-flash" | "gemini-3.8-flash";
+type GeminiModel = "gemini-3.6-flash" | "gemini-3.7-flash" | "gemini-3.8-flash" | "gemini-4-hydrogen";
 
 const MODELS: { id: GeminiModel; label: string; badge: string }[] = [
   { id: "gemini-3.6-flash", label: "3.6 Flash", badge: "Stable" },
   { id: "gemini-3.7-flash", label: "3.7 Flash", badge: "Fast" },
   { id: "gemini-3.8-flash", label: "3.8 Flash", badge: "Smartest" },
+  { id: "gemini-4-hydrogen", label: "4 Hydrogen", badge: "Newest" },
 ];
 
 const LS_MODEL = "jerin_model";
@@ -113,6 +114,9 @@ function JerinSettings({
             {m.label}
             {m.id === "gemini-3.8-flash" && (
               <span className="ml-1 opacity-70">✨</span>
+            )}
+            {m.id === "gemini-4-hydrogen" && (
+              <span className="ml-1 opacity-70">🆕</span>
             )}
           </button>
         ))}

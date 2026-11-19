@@ -1048,7 +1048,7 @@ export function JerinChat({ model, thinking }: { model: string; thinking: boolea
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold">{title || "New chat"}</div>
             <div className="truncate text-[11px] text-muted-foreground">
-              {model.replace("gemini-", "Gemini ").replace("-flash", " Flash")} · {thinking ? "Deep thinking" : "Quick"}
+              {model === "gemini-4-hydrogen" ? "Gemini 4 Hydrogen" : model.replace("gemini-", "Gemini ").replace("-flash", " Flash")} · {thinking ? "Deep thinking" : "Quick"}
             </div>
           </div>
           <button

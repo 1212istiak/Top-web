@@ -190,7 +190,7 @@ export async function testKeys(model: string): Promise<KeyTestResult[]> {
         headers: { "Content-Type": "application/json", "x-goog-api-key": k.key },
         body: JSON.stringify({
           contents: [{ role: "user", parts: [{ text: "Reply with the single word OK." }] }],
-          generationConfig: { maxOutputTokens: 16, thinkingConfig: { thinkingBudget: 0 } },
+          generationConfig: { maxOutputTokens: 16, thinkingConfig: thinkingOffConfig(model) },
         }),
         signal: AbortSignal.timeout(30000),
       });
@@ -237,6 +237,19 @@ function exhaustedMessage(model: string, allowed?: string[]): string {
 }
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Gemini 4 models take a thinking *level*; the 3.x models take a token budget. */
+export const isGemini4 = (model: string): boolean => /^gemini-4-/.test(model);
+
+/** Thinking switched off / kept to the minimum the model allows (Quick mode, titles, key tests). */
+export function thinkingOffConfig(model: string): Record<string, unknown> {
+  return isGemini4(model) ? { thinkingLevel: "low" } : { thinkingBudget: 0 };
+}
+
+/** Thinking on, with the thought summaries streamed back (Deep mode). */
+export function thinkingOnConfig(model: string): Record<string, unknown> {
+  return isGemini4(model) ? { includeThoughts: true, thinkingLevel: "high" } : { includeThoughts: true, thinkingBudget: -1 };
+}
 
 /** After this many keys in a row refuse a request with a 429 that names no limit, stop trying more keys. */
 const MAX_UNRECOGNISED_KEYS = 3;
