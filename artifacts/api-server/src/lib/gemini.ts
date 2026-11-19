@@ -78,6 +78,18 @@ function msUntilPacificMidnight(now = new Date()): number {
   return 24 * 3600_000 - since + 60_000;
 }
 
+/** Plain-language reason for a 403/400 key rejection, from Google's own wording. */
+function explainRejection(text: string): string {
+  if (/free tier is not available|set up billing|billing/i.test(text))
+    return "this Google project has no free tier — billing must be enabled on it to use the Gemini API (or use a key from a project that has free access)";
+  if (/leak/i.test(text)) return "Google reports this key as leaked — delete it and create a new one";
+  if (/SERVICE_DISABLED|has not been used|is disabled|API_KEY_SERVICE_BLOCKED/i.test(text))
+    return "the Generative Language API is not enabled for this key's project, or the key is restricted to other APIs";
+  if (/API key not valid|API_KEY_INVALID/i.test(text)) return "the key is not valid — it may be mistyped, deleted, or have stray spaces";
+  if (/suspend/i.test(text)) return "this project or key has been suspended by Google";
+  return "Google refused this key";
+}
+
 /** Decides whether a failed response means "this key is out", and for how long. */
 function classifyKeyFailure(status: number, text: string): { ms: number; reason: string; invalid?: boolean; unrecognised?: boolean } | null {
   if (status === 429) {
@@ -89,9 +101,9 @@ function classifyKeyFailure(status: number, text: string): { ms: number; reason:
     // Unrecognised 429: could be a request-specific limit rather than an empty key, so rest briefly only.
     return { ms: 60_000, reason: "Google refused the request (limit not recognised)", unrecognised: true };
   }
-  if (status === 400 && /API key not valid|API_KEY_INVALID/i.test(text)) return { ms: 6 * 3600_000, reason: "invalid key", invalid: true };
+  if (status === 400 && /API key not valid|API_KEY_INVALID/i.test(text)) return { ms: 6 * 3600_000, reason: explainRejection(text), invalid: true };
   if (status === 403 && !/file/i.test(text) && /PERMISSION_DENIED|API key|leaked|suspend|disabled|denied/i.test(text))
-    return { ms: 6 * 3600_000, reason: "key rejected", invalid: true };
+    return { ms: 6 * 3600_000, reason: explainRejection(text), invalid: true };
   return null;
 }
 
@@ -181,7 +193,7 @@ export async function testKeys(model: string): Promise<KeyTestResult[]> {
       }
       const f = classifyKeyFailure(res.status, text);
       if (f) markFailed(k, model, f, geminiReason(text));
-      if (f?.invalid) results.push({ label, envName: envNames[i], hint: hintOf(k.key), status: "invalid", message: "Google rejected this key. It is wrong, deleted, or restricted — copy it again." });
+      if (f?.invalid) results.push({ label, envName: envNames[i], hint: hintOf(k.key), status: "invalid", message: `Google rejected this key: ${f.reason}.` });
       else if (f) results.push({ label, envName: envNames[i], hint: hintOf(k.key), status: "no_quota", message: `Valid, but out of quota right now (${f.reason}).` });
       else if (res.status >= 500) results.push({ label, envName: envNames[i], hint: hintOf(k.key), status: "overloaded", message: `Key accepted, but Google's servers are overloaded for ${model} right now (HTTP ${res.status}). Not a key problem.` });
       else results.push({ label, envName: envNames[i], hint: hintOf(k.key), status: "error", message: `Unexpected reply from Google (HTTP ${res.status}).` });
@@ -375,7 +387,7 @@ export function friendlyGeminiError(status: number, text: string, model: string)
   if (status === 404) return `Model ${model} isn't available on your key — pick a different model in Jerin's settings.`;
   if (status === 503) return "Gemini is overloaded right now — try again in a moment.";
   if (status === 400) return "Gemini rejected that request (a file may be unsupported or too large). Try again without the attachment.";
-  if (status === 403) return "Gemini refused the request — check that the API key is valid and allowed to use this model.";
+  if (status === 403) return `Gemini refused the request: ${explainRejection(text)}.`;
   return "Jerin's brain (Gemini) returned an error.";
 }
 
