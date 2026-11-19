@@ -114,6 +114,16 @@ function markFailed(k: KeyInfo, model: string, f: { ms: number; reason: string; 
   console.warn(`[gemini-keys] ${k.label} resting ${Math.round(f.ms / 1000)}s for ${model}: ${f.reason}`);
 }
 
+/**
+ * Forgets the short "limit not recognised" rests for one model. Used when the request is retried
+ * without Google Search: those rests were most likely caused by the search tool, not by the keys.
+ */
+export function clearUnrecognisedRests(model: string): void {
+  for (const [key, r] of resting) {
+    if (key.endsWith(`|${model}`) && /limit not recognised/i.test(r.reason)) resting.delete(key);
+  }
+}
+
 function restOf(k: KeyInfo, model: string): Rest | null {
   const now = Date.now();
   const d = disabled.get(k.id);

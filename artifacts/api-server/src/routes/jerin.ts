@@ -25,6 +25,7 @@ import {
   generateOnce,
   streamGenerate,
   uploadToGeminiFiles,
+  clearUnrecognisedRests,
 } from "../lib/gemini";
 
 const router: IRouter = Router();
@@ -592,6 +593,14 @@ function extractYouTubeUrls(text: string): string[] {
 
 const startVariant: Record<"builtins" | "plain", number> = { builtins: 0, plain: 0 };
 
+// Google Search grounding has its own (often zero) free-tier quota. When a request with Search on is
+// refused with a 429 and works without it, Search is left off for a while instead of failing first.
+const SEARCH_PAUSE_MS = 30 * 60_000;
+let searchBlockedUntil = 0;
+
+/** "gemini-3.8-flash" -> "3.8 Flash" */
+const shortModel = (m: string) => m.replace(/^gemini-/, "").replace(/-flash$/, " Flash");
+
 function buildVariants(base: any, thinking: boolean, toggles: ToolToggles, hasVideo: boolean) {
   const builtins: any[] = [];
   if (toggles.search) builtins.push({ googleSearch: {} }, { urlContext: {} });
@@ -834,10 +843,15 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
       "Jerin prompt size",
     );
     const baseBody = { systemInstruction: { parts: [{ text: systemPrompt }] } };
-    const variants = buildVariants(baseBody, thinking, toggles, hasVideoInput);
-    const variantKey = toggles.search || toggles.code ? "builtins" : "plain";
+    const searchPaused = toggles.search && Date.now() < searchBlockedUntil;
+    let activeToggles: ToolToggles = searchPaused ? { ...toggles, search: false } : toggles;
+    let searchDropped = searchPaused; // true once Search is off for this request (so it is only dropped once)
+    let variants = buildVariants(baseBody, thinking, activeToggles, hasVideoInput);
+    let variantKey: "builtins" | "plain" = activeToggles.search || activeToggles.code ? "builtins" : "plain";
     let variantIdx = Math.min(startVariant[variantKey], variants.length - 1);
     const notices: string[] = [];
+    const skippedModels: { model: string; why: "overloaded" | "quota" }[] = [];
+    if (searchPaused) notices.push("Web search was skipped (Google's free tier refused it a moment ago).");
     const sourceSet = new Map<string, string>();
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -914,12 +928,25 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
         } catch (err) {
           // Google overloaded / slow on this model before anything was produced: try another model.
           // Quotas are per model, so when every key is out for this model, another model may still have room.
+          // A 429 with Search on: Google Search grounding often has no free quota. Retry the same model
+          // once without Search before giving up on the model.
+          if (err instanceof GeminiError && err.status === 429 && !succeeded && activeToggles.search && !searchDropped && !ac.signal.aborted) {
+            logger.warn({ model }, "Quota refusal with Search on, retrying without Search");
+            searchDropped = true;
+            activeToggles = { ...activeToggles, search: false };
+            clearUnrecognisedRests(model);
+            variants = buildVariants(baseBody, thinking, activeToggles, hasVideoInput);
+            variantKey = activeToggles.search || activeToggles.code ? "builtins" : "plain";
+            variantIdx = Math.min(startVariant[variantKey], variants.length - 1);
+            notices.push("Web search was skipped (Google's free tier refused it).");
+            continue;
+          }
           const poolOut = err instanceof GeminiError && err.status === 429 && !!err.friendly && !lockToKeys;
           if (err instanceof GeminiError && ([500, 502, 503, 504].includes(err.status) || poolOut) && !succeeded && !ac.signal.aborted) {
             const alt = [...ALLOWED_MODELS].reverse().find((m) => !triedModels.has(m));
             if (alt) {
               logger.warn({ from: model, to: alt, status: err.status }, "Gemini unavailable, switching model");
-              notices.push(poolOut ? `${model} is out of quota on every key, so this reply was answered by ${alt}.` : `${model} isn't responding (Google overloaded), so this reply was answered by ${alt}.`);
+              skippedModels.push({ model, why: poolOut ? "quota" : "overloaded" });
               triedModels.add(alt);
               model = alt;
               continue;
@@ -937,6 +964,8 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
       }
       // A later variant worked where an earlier one was rejected: start there next time.
       if (succeeded && variantIdx > startVariant[variantKey]) startVariant[variantKey] = variantIdx;
+      // It only worked after Search was dropped: keep Search off for a while so each message doesn't fail first.
+      if (succeeded && searchDropped && toggles.search && !searchPaused) searchBlockedUntil = Date.now() + SEARCH_PAUSE_MS;
 
       // flush a transcript buffer that never completed
       if (!transcriptDone && transcriptBuf) {
@@ -975,7 +1004,15 @@ router.post("/rocky/chat", requireAdmin, async (req: Request, res: Response): Pr
 
     sources = [...sourceSet].map(([uri, title]) => ({ title, uri })).slice(0, 8);
     if (sources.length) emit({ type: "sources", sources });
-    if (notices.length) emit({ type: "notice", text: notices.join(" ") });
+    if (skippedModels.length) {
+      const names = (why: "overloaded" | "quota") => skippedModels.filter((x) => x.why === why).map((x) => shortModel(x.model));
+      const parts = [
+        names("overloaded").length ? `${names("overloaded").join(" and ")} overloaded` : "",
+        names("quota").length ? `${names("quota").join(" and ")} out of quota` : "",
+      ].filter(Boolean);
+      notices.unshift(`Answered by ${shortModel(model)} (${parts.join("; ")} right now).`);
+    }
+    if (notices.length) emit({ type: "notice", text: [...new Set(notices)].join(" ") });
 
     // Voice notes: store what the user said so future turns (and old chats) keep the text.
     if (audioOnly && userMessageId) {
