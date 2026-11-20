@@ -26,6 +26,7 @@ import {
   streamGenerate,
   uploadToGeminiFiles,
   clearUnrecognisedRests,
+  CHAT_MODELS,
   isGemini4,
   thinkingOffConfig,
   thinkingOnConfig,
@@ -33,7 +34,7 @@ import {
 
 const router: IRouter = Router();
 
-const ALLOWED_MODELS = ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-4-hydrogen"];
+const ALLOWED_MODELS: readonly string[] = CHAT_MODELS;
 // When the chosen model is overloaded / out of quota, fall back in this order. The Gemini 4 model is
 // only used when it is picked on purpose; it never becomes somebody's silent fallback.
 const FALLBACK_ORDER = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash"];

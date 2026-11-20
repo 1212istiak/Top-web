@@ -238,6 +238,9 @@ function exhaustedMessage(model: string, allowed?: string[]): string {
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** The chat models Jerin can use (the selector, fallbacks and the model tester all share this list). */
+export const CHAT_MODELS = ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-4-hydrogen"] as const;
+
 /** Gemini 4 models take a thinking *level*; the 3.x models take a token budget. */
 export const isGemini4 = (model: string): boolean => /^gemini-4-/.test(model);
 

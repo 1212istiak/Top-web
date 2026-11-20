@@ -1,13 +1,13 @@
 import { Router, type IRouter } from "express";
 import { requireAdmin } from "../middlewares/auth";
 import { logger } from "../lib/logger";
-import { pooledFetch, hasGeminiKeys, thinkingOffConfig } from "../lib/gemini";
+import { pooledFetch, hasGeminiKeys, thinkingOffConfig, CHAT_MODELS } from "../lib/gemini";
 import { db, episodesTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 
 const router: IRouter = Router();
 
-const ALLOWED_MODELS = ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-4-hydrogen"] as const;
+const ALLOWED_MODELS = CHAT_MODELS;
 type GeminiModel = typeof ALLOWED_MODELS[number];
 
 import { isRateLimited } from "../lib/rate-limit";

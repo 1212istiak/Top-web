@@ -1,4 +1,6 @@
 import { useRef, useState, useEffect } from "react";
+import { CheckerPanel } from "./jerin/decision";
+import { ModelTestPanel } from "./jerin/model-test";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -89,12 +91,13 @@ function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }>
 // JERIN SETTINGS BAR — model selector + thinking toggle
 // ---------------------------------------------------------------------------
 function JerinSettings({
-  model, setModel, thinking, setThinking,
+  model, setModel, thinking, setThinking, onTest,
 }: {
   model: GeminiModel;
   setModel: (m: GeminiModel) => void;
   thinking: boolean;
   setThinking: (t: boolean) => void;
+  onTest: () => void;
 }) {
   return (
     <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 p-3 rounded-lg bg-black/30 border border-cyan-900/40">
@@ -151,8 +154,11 @@ function JerinSettings({
       </div>
 
       {/* Active model badge */}
-      <div className="sm:ml-auto text-xs text-muted-foreground">
-        {MODELS.find(m => m.id === model)?.badge} · {thinking ? "Deep thinking" : "Quick mode"}
+      <div className="sm:ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+        <button onClick={onTest} className="px-2.5 py-1 rounded-full border border-cyan-700/60 text-cyan-300 hover:bg-cyan-500/10" data-testid="test-model-btn">
+          🧪 Test model
+        </button>
+        <span>{MODELS.find(m => m.id === model)?.badge} · {thinking ? "Deep thinking" : "Quick mode"}</span>
       </div>
     </div>
   );
@@ -169,6 +175,8 @@ export function RockyTab() {
     () => localStorage.getItem(LS_THINKING) === "true"
   );
 
+  const [showTest, setShowTest] = useState(false);
+
   return (
     <div className="space-y-4 animate-in fade-in">
       <div>
@@ -176,7 +184,8 @@ export function RockyTab() {
         <p className="text-sm text-muted-foreground mt-1">Your TVR Dubbers copilot — chat, voice, images & video, scene ideas, titles, and growth insights.</p>
       </div>
 
-      <JerinSettings model={model} setModel={setModel} thinking={thinking} setThinking={setThinking} />
+      <JerinSettings model={model} setModel={setModel} thinking={thinking} setThinking={setThinking} onTest={() => setShowTest(true)} />
+      {showTest && <ModelTestPanel key={model} model={model} onClose={() => setShowTest(false)} />}
 
       <Tabs defaultValue="voice" className="w-full">
         <TabsList className="bg-black/20 border border-border flex-wrap h-auto gap-1 overflow-x-auto">
@@ -184,6 +193,7 @@ export function RockyTab() {
           <TabsTrigger value="scene">Scene Suggester</TabsTrigger>
           <TabsTrigger value="titles">Title Generator</TabsTrigger>
           <TabsTrigger value="growth">Growth Insights</TabsTrigger>
+          <TabsTrigger value="checker">✅ Checker</TabsTrigger>
           <TabsTrigger value="publish">🚀 Publish</TabsTrigger>
         </TabsList>
 
@@ -192,6 +202,7 @@ export function RockyTab() {
           <TabsContent value="scene"><PromptPanel mode="scene" model={model} thinking={thinking} placeholder="What's trending, requested, or being talked about lately? (e.g. fan comments asking for a scene, recent BTTH season buzz...)" buttonLabel="Suggest a scene" /></TabsContent>
           <TabsContent value="titles"><PromptPanel mode="titles" model={model} thinking={thinking} placeholder="Describe the episode/scene you just dubbed (characters, moment, tone)..." buttonLabel="Generate titles & descriptions" /></TabsContent>
           <TabsContent value="growth"><GrowthPanel model={model} thinking={thinking} /></TabsContent>
+          <TabsContent value="checker"><CheckerPanel /></TabsContent>
           <TabsContent value="publish"><PublishPanel model={model} thinking={thinking} /></TabsContent>
         </div>
       </Tabs>

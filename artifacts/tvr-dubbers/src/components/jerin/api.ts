@@ -305,3 +305,95 @@ export async function streamChat(
 export function stopChat(sessionId: string): Promise<unknown> {
   return apiJson("/chat/stop", { method: "POST", body: JSON.stringify({ sessionId }) }).catch(() => undefined);
 }
+
+// ---------------------------------------------------------------------------
+// Gemini Decision (Checker tab) and the model tester
+// ---------------------------------------------------------------------------
+export interface DecisionAnswer {
+  type: "noul" | "choice" | "score";
+  /** 0-1, how sure the model is. */
+  confidence: number | null;
+  /** noul: probability of "yes". */
+  yes?: number | null;
+  choice?: string | null;
+  score?: number | null;
+  probabilities?: Record<string, number>;
+  legend?: Record<string, string>;
+  missing?: boolean;
+}
+
+export interface DecisionResult {
+  model: string;
+  answers: Record<string, DecisionAnswer>;
+  usage: { inputTokens: number | null };
+  ms: number;
+}
+
+export interface DecisionQuestion {
+  type: "noul" | "choice" | "score";
+  instructions: string;
+  criteria?: unknown;
+}
+
+export const MAX_DECISION_FILE_BYTES = 25 * 1024 * 1024;
+
+export function runDecision(body: {
+  text?: string;
+  mediaIds?: string[];
+  questions: Record<string, DecisionQuestion>;
+}): Promise<DecisionResult> {
+  return apiJson<DecisionResult>("/decision", { method: "POST", body: JSON.stringify(body) });
+}
+
+/** Sends a file to the server's 10-minute scratch store; Decision reads it from there. */
+export function uploadDecisionMedia(
+  file: File,
+  onProgress: (pct: number) => void,
+): Promise<{ mediaId: string; mimeType: string; name: string; size: number }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE}/api/rocky/decision/media`, true);
+    for (const [k, v] of Object.entries(authHeaders(false))) xhr.setRequestHeader(k, v);
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.setRequestHeader("X-File-Mime", file.type || "application/octet-stream");
+    xhr.setRequestHeader("X-File-Name", encodeURIComponent(file.name));
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.min(99, Math.round((e.loaded / e.total) * 100)));
+    };
+    xhr.onload = () => {
+      let data: any = null;
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        /* ignore */
+      }
+      if (xhr.status >= 200 && xhr.status < 300 && data?.mediaId) resolve(data);
+      else reject(new Error(data?.error || `Upload failed (${xhr.status})`));
+    };
+    xhr.onerror = () => reject(new Error("Upload failed — network error"));
+    xhr.send(file);
+  });
+}
+
+export interface ModelCheckTest {
+  id: string;
+  label: string;
+  status: "pass" | "fail" | "skip";
+  ms: number;
+  inTokens: number | null;
+  outTokens: number | null;
+  note: string;
+  sample?: string;
+}
+
+export interface ModelCheckResult {
+  model: string;
+  available: boolean;
+  tests: ModelCheckTest[];
+  summary: { passed: number; failed: number; skipped: number; avgMs: number };
+  totalMs: number;
+}
+
+export function runModelCheck(model: string): Promise<ModelCheckResult> {
+  return apiJson<ModelCheckResult>("/model-check", { method: "POST", body: JSON.stringify({ model }) });
+}
