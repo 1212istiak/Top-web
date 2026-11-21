@@ -7,6 +7,10 @@ import { logger } from "./lib/logger";
 
 const app: Express = express();
 
+// Render terminates TLS in one proxy hop. Trusting exactly one hop makes req.ip the real client IP
+// and stops clients from spoofing it with their own X-Forwarded-For header.
+app.set("trust proxy", 1);
+
 const allowedOrigins = process.env.FRONTEND_URL
   ? [process.env.FRONTEND_URL, "http://localhost:3000", "http://localhost:5173"]
   : true; // allow all in dev

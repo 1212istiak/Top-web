@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db, trailerTable } from "@workspace/db";
 import { UpdateTrailerBody } from "@workspace/api-zod";
 import { requireAdmin } from "../middlewares/auth";
+import { checkEpisodeFields } from "../lib/validate";
 
 const router: IRouter = Router();
 
@@ -33,6 +34,12 @@ router.put("/trailer", requireAdmin, async (req, res): Promise<void> => {
   const parsed = UpdateTrailerBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const fieldError = checkEpisodeFields(parsed.data);
+  if (fieldError) {
+    res.status(400).json({ error: fieldError });
     return;
   }
 

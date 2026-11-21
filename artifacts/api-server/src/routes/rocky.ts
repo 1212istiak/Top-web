@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { requireAdmin } from "../middlewares/auth";
+import { checkEpisodeFields } from "../lib/validate";
 import { logger } from "../lib/logger";
 import { pooledFetch, hasGeminiKeys, thinkingOffConfig, CHAT_MODELS } from "../lib/gemini";
 import { db, episodesTable } from "@workspace/db";
@@ -260,6 +261,15 @@ router.post("/rocky/execute-action", requireAdmin, async (req, res): Promise<voi
       res.status(400).json({ error: "title, episodeNumber, and primaryServerUrl are required." });
       return;
     }
+    if (typeof title !== "string" || title.length > 300) {
+      res.status(400).json({ error: "title must be text under 300 characters." });
+      return;
+    }
+    const createError = checkEpisodeFields({ episodeNumber, season, thumbnailUrl, primaryServerUrl, backupServerUrl });
+    if (createError) {
+      res.status(400).json({ error: createError });
+      return;
+    }
     try {
       const [episode] = await db.insert(episodesTable).values({
         title,
@@ -289,6 +299,11 @@ router.post("/rocky/execute-action", requireAdmin, async (req, res): Promise<voi
     if (typeof thumbnailUrl === "string" && thumbnailUrl.trim()) changes.thumbnailUrl = thumbnailUrl.trim();
     if (!episodeNumber || Object.keys(changes).length === 0) {
       res.status(400).json({ error: "episodeNumber and at least one field to change are required." });
+      return;
+    }
+    const updateError = checkEpisodeFields({ episodeNumber: Number(episodeNumber), season: season ? Number(season) : undefined, thumbnailUrl: changes.thumbnailUrl, primaryServerUrl: changes.primaryServerUrl, backupServerUrl: changes.backupServerUrl });
+    if (updateError) {
+      res.status(400).json({ error: updateError });
       return;
     }
     try {

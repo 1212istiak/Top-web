@@ -11,6 +11,7 @@ import {
   IncrementEpisodeViewParams,
 } from "@workspace/api-zod";
 import { requireAdmin } from "../middlewares/auth";
+import { checkEpisodeFields } from "../lib/validate";
 
 const router: IRouter = Router();
 
@@ -66,6 +67,11 @@ router.post("/episodes", requireAdmin, async (req, res): Promise<void> => {
   }
 
   const data = parsed.data;
+  const fieldError = checkEpisodeFields(data);
+  if (fieldError) {
+    res.status(400).json({ error: fieldError });
+    return;
+  }
   const [episode] = await db.insert(episodesTable).values({
     title: data.title,
     episodeNumber: data.episodeNumber,
@@ -130,6 +136,11 @@ router.patch("/episodes/:id", requireAdmin, async (req, res): Promise<void> => {
 
   const updateData: Partial<typeof episodesTable.$inferInsert> = {};
   const d = parsed.data;
+  const fieldError = checkEpisodeFields(d);
+  if (fieldError) {
+    res.status(400).json({ error: fieldError });
+    return;
+  }
   if (d.title !== undefined) updateData.title = d.title;
   if (d.episodeNumber !== undefined) updateData.episodeNumber = d.episodeNumber;
   if (d.season !== undefined) updateData.season = d.season;

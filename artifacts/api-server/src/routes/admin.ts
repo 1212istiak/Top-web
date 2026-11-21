@@ -29,7 +29,7 @@ function isLoginRateLimited(ip: string): boolean {
 
 // POST /admin/login
 router.post("/admin/login", async (req, res): Promise<void> => {
-  const ip = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+  const ip = req.ip || req.socket.remoteAddress || "unknown";
   if (isLoginRateLimited(ip)) {
     res.status(429).json({ error: "Too many login attempts. Try again in 15 minutes." });
     return;

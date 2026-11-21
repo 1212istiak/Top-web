@@ -50,7 +50,7 @@ router.get("/episodes/:id/comments", async (req, res): Promise<void> => {
 
 // POST /episodes/:id/comments
 router.post("/episodes/:id/comments", async (req, res): Promise<void> => {
-  const ip = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+  const ip = req.ip || req.socket.remoteAddress || "unknown";
   if (isRateLimited(ip)) {
     res.status(429).json({ error: "Too many comments. Please wait a minute." });
     return;
