@@ -81,6 +81,13 @@ export function SmartPlayer({
   // Full embed code (iframe / div+script widget / monetized JS embed).
   // Rendered in a sandboxed iframe with its own document so <script> tags
   // (including document.write-based ad embeds) execute normally.
+  //
+  // Deliberately NO "allow-same-origin": that flag would give pasted code this
+  // site's own origin, letting it read localStorage (the admin token) and call
+  // the API as the visitor. Without it the embed runs in an isolated, opaque
+  // origin. Players that are real cross-origin iframes (YouTube, Rumble,
+  // Dailymotion) are unaffected. "allow-popups-to-escape-sandbox" lets ad
+  // click-throughs open normally; top-level navigation is still blocked.
   if (looksLikeHtmlEmbed(trimmed)) {
     return (
       <iframe
@@ -88,7 +95,7 @@ export function SmartPlayer({
         className={className}
         allowFullScreen
         allow="autoplay; fullscreen; picture-in-picture; monetization; encrypted-media"
-        sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-presentation"
+        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-presentation"
       />
     );
   }
@@ -102,6 +109,9 @@ export function SmartPlayer({
       </video>
     );
   }
+
+  // Never use a non-http(s) value (javascript:, data:, ...) as an iframe src.
+  if (!/^https?:\/\//i.test(normalized.src)) return null;
 
   return (
     <iframe
