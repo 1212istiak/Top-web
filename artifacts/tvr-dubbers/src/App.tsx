@@ -7,6 +7,7 @@ import { Home } from '@/pages/home';
 import { AdminPage } from '@/pages/admin';
 import { PrivacyPage, TermsPage } from '@/pages/legal';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
+import { useTheme } from '@/hooks/use-theme';
 
 const queryClient = new QueryClient();
 
@@ -23,6 +24,9 @@ function Router() {
 }
 
 function App() {
+  // Apply the saved light/dark theme on every page (previously only the home page's
+  // navbar did, so a direct load/refresh of /admin fell back to light mode).
+  useTheme();
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>

@@ -1,6 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem("tvr-theme");
+          var light = window.matchMedia("(prefers-color-scheme: light)").matches;
+          var theme = saved || (light ? "light" : "dark");
+          if (theme === "dark") document.documentElement.classList.add("dark");
+          else document.documentElement.classList.remove("dark");
+        } catch (e) {}
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TVR Dubbers – Battle Through the Heavens Bangla Dub (BTTH)</title>
